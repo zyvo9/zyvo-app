@@ -20,13 +20,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK (accept licenses)
-        uses: android-actions/setup-android@v3
-
       - name: Build debug APK
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
+  # SDK preinstalled on runners; gradle fetches missing pieces itself
 
       - name: Locate APK
         run: find app/build/outputs -name "*.apk" | head -5
