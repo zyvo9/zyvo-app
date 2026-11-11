@@ -14,7 +14,6 @@ ext {
 
 android {
     namespace "com.termux"
-        applicationId "com.zyvo.app"
 
     compileSdkVersion project.properties.compileSdkVersion.toInteger()
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: project.properties.ndkVersion
@@ -46,6 +45,7 @@ android {
         targetSdkVersion project.properties.targetSdkVersion.toInteger()
         versionCode 118
         versionName "0.118.0"
+        applicationId "com.zyvo.app"
 
         if (appVersionName) versionName = appVersionName
         validateVersionName(versionName)
