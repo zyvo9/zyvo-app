@@ -177,9 +177,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 if (it.kind != ChatItem.ASSISTANT) continue;
                 if (it.fullText == null || it.shown >= it.fullText.length()) continue;
                 int backlog = it.fullText.length() - it.shown;
-                // drain the backlog in ~4 frames: fast enough to keep up with the
-                // model, slow enough that words still arrive one by one
-                int step = Math.max(2, (backlog + 3) / 4);
+                // steady CLI-like flow: every burst unfolds over ~half a second
+                // instead of popping in at once, and the drain rate accelerates
+                // with the backlog so the reveal never falls behind a fast lane
+                int step = Math.max(2, (int) Math.ceil(backlog / 30.0));
                 int next = Math.min(it.fullText.length(), it.shown + step);
                 if (backlog > 32) {
                     // big burst - snap to the next space so words never split

@@ -197,7 +197,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (h.actions.getVisibility() == View.VISIBLE) h.actions.setVisibility(View.GONE);
     }
 
-    /** Cheap path for a thinking row: only the live 2-line tail moves. */
+    /** Cheap path for a thinking row: only the live 4-line tail moves. */
     private void bindStreamThought(ThoughtVH h, ChatItem item, int position) {
         if (item.kind != ChatItem.THOUGHT || !item.streaming) {
             bindThought(h, item, position);
@@ -206,12 +206,12 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (TextUtils.isEmpty(item.text)) return;
         if (h.body.getVisibility() != View.VISIBLE) {
             h.body.setVisibility(View.VISIBLE);
-            h.body.setMaxLines(2);
+            h.body.setMaxLines(4);
             h.body.setEllipsize(TextUtils.TruncateAt.START);
             h.body.setTextColor(ContextCompat.getColor(ctx, R.color.text_disabled));
             h.body.setTextSize(12f);
         }
-        String live = tail(item.text, 2);
+        String live = tail(item.text, 4);
         if (!live.contentEquals(h.body.getText())) h.body.setText(live);
     }
 
@@ -420,6 +420,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                     ? ctx.getString(R.string.thinking_of, item.title)
                     : ctx.getString(R.string.thinking));
             h.spinner.setVisibility(View.VISIBLE);
+            h.spinner.setAlpha(1f);
             h.chevron.setVisibility(View.GONE);
             h.startTicker();
             h.startShimmer();
@@ -442,8 +443,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (showBody) {
             if (item.streaming) {
                 // live tail of the reasoning tokens — plain text, no markdown parse
-                h.body.setText(tail(item.text, 2));
-                h.body.setMaxLines(2);
+                h.body.setText(tail(item.text, 4));
+                h.body.setMaxLines(4);
                 h.body.setEllipsize(TextUtils.TruncateAt.START);
                 h.body.setTextColor(ContextCompat.getColor(ctx, R.color.text_disabled));
                 h.body.setTextSize(12f);
