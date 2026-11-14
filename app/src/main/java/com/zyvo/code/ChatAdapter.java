@@ -588,36 +588,37 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (hasDiff) {
             h.diff.setText(diffLabel(add, del));
             h.diff.setVisibility(View.VISIBLE);
-            h.diff.setClickable(true);
         } else if (item.liveLines > 0) {
             h.diff.setText("+" + item.liveLines);
             h.diff.setTextColor(ContextCompat.getColor(ctx, R.color.ok));
             h.diff.setVisibility(View.VISIBLE);
-            h.diff.setClickable(false);
         } else {
             h.diff.setVisibility(View.GONE);
         }
 
-        // Body: written content + command output + diff. Tap stages 10 lines ->
-        // everything -> closed, like an agent IDE's tool box.
-        String bodyText = item.output == null ? "" : item.output;
-        if (!TextUtils.isEmpty(item.content)) {
-            bodyText = item.content + (bodyText.isEmpty() ? "" : "\n\n" + bodyText);
-        }
-        boolean hasOutput = !TextUtils.isEmpty(bodyText);
+        // Body: WHAT CHANGED, agent-IDE style. Edits show the unified diff with
+        // per-line red/green washes (SS-28); writes show the numbered new file
+        // in a green panel (SS-26); everything else shows the plain output.
+        boolean hasDiffBody = !TextUtils.isEmpty(item.diff);
+        boolean hasContent = !TextUtils.isEmpty(item.content) && !hasDiffBody;
+        String plainOut = item.output == null ? "" : item.output;
+        boolean hasOutput = hasDiffBody || hasContent || !TextUtils.isEmpty(plainOut);
         boolean hasCmd = !TextUtils.isEmpty(clean);
-        int total = hasOutput ? countLines(bodyText) : 0;
+        int total = 0;
+        if (hasDiffBody) total = countLines(item.diff);
+        else if (hasContent) {
+            total = countLines(item.content) + (plainOut.isEmpty() ? 0 : 1 + countLines(plainOut));
+        } else if (!plainOut.isEmpty()) total = countLines(plainOut);
         boolean open = item.expanded || item.full || failed || running;
         int maxLines = item.full ? 400 : (item.expanded ? 10 : 3);
         if (failed && !item.expanded) maxLines = 8;
 
         boolean showBody = open && (hasCmd || hasOutput || hasDiff);
         h.body.setVisibility(showBody ? View.VISIBLE : View.GONE);
-        // agent-IDE panel: pure additions = green box, pure deletions = red box,
-        // mixed edits keep the neutral body
-        if (!TextUtils.isEmpty(item.content) || (item.showDiff && hasDiff)) {
-            h.body.setBackgroundResource(add > 0 && del == 0 ? R.drawable.bg_diff_add
-                    : del > 0 && add == 0 ? R.drawable.bg_diff_del : 0);
+        // panel: a write (pure additions) = green box; an edit diff carries its
+        // own per-line washes on the neutral body
+        if (hasContent && add > 0 && del == 0) {
+            h.body.setBackgroundResource(R.drawable.bg_diff_add);
         } else {
             h.body.setBackgroundResource(0);
         }
@@ -626,20 +627,23 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (open && hasCmd) h.cmdLine.setText(clean);
 
         h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
-        if (open && hasOutput) {
-            if (!TextUtils.isEmpty(item.content)) {
-                // write/edit: IDE-style numbered content (SS-26/27 look)
-                h.output.setText(numberedBody(item.content,
-                        TextUtils.isEmpty(item.output) ? "" : item.output));
-                h.output.setMaxLines(maxLines);
-                h.output.setEllipsize(null);
-            } else {
-                boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-                h.output.setText(tailMode ? tail(bodyText, maxLines)
-                        : (item.full ? cap(bodyText, 400) : preview(bodyText, maxLines)));
-                h.output.setMaxLines(maxLines);
-                h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
-            }
+        if (open && hasDiffBody) {
+            // edit: unified diff body (SS-28)
+            h.output.setText(diffSpans(item.diff));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(null);
+        } else if (open && hasContent) {
+            // write: IDE-style numbered content (SS-26 look)
+            h.output.setText(numberedBody(item.content,
+                    plainOut.isEmpty() ? "" : plainOut));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(null);
+        } else if (open && !plainOut.isEmpty()) {
+            boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
+            h.output.setText(tailMode ? tail(plainOut, maxLines)
+                    : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
         }
 
         boolean overflow = total > maxLines;
@@ -655,19 +659,12 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.chevron.setVisibility(canOpen ? View.VISIBLE : View.GONE);
         h.chevron.setRotation(open ? 180f : 0f);
 
-        // --- diff body (real +/− lines)
-        boolean showDiff = item.showDiff && hasDiff;
-        h.diffBody.setVisibility(showDiff ? View.VISIBLE : View.GONE);
-        if (showDiff) {
-            h.diffBody.setText(diffSpans(item.diff));
-            h.diffBody.setMaxLines(item.full ? 400 : 10);
-            h.diffBody.setEllipsize(TextUtils.TruncateAt.END);
-        }
+        // the unified diff now lives in the main body — the old chip-toggled
+        // second diff box stays off
+        h.diffBody.setVisibility(View.GONE);
 
-        h.diff.setOnClickListener(hasDiff ? v -> {
-            item.showDiff = !item.showDiff;
-            notifyItemChanged(position);
-        } : null);
+        h.diff.setOnClickListener(null);
+        h.diff.setClickable(false);
 
         h.expand.setOnClickListener(v -> {
             nextStage(item);
