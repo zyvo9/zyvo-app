@@ -1585,7 +1585,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private void updateSendIcon() {
         if (send == null || input == null) return;
-        boolean showArrow = !busy || input.getText().toString().trim().length() > 0;
+        // while a task runs the button stays the stop square for the whole turn;
+        // typing + click still queues the message (see the send click handler)
+        boolean showArrow = !busy;
         send.setImageResource(showArrow ? R.drawable.ic_arrow_up : R.drawable.ic_stop);
         send.setContentDescription(getString(showArrow ? R.string.send : R.string.stop));
     }

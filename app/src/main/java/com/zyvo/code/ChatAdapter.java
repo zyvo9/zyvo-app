@@ -619,11 +619,19 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
         h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
         if (open && hasOutput) {
-            boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-            h.output.setText(tailMode ? tail(bodyText, maxLines)
-                    : (item.full ? cap(bodyText, 400) : preview(bodyText, maxLines)));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+            if (!TextUtils.isEmpty(item.content)) {
+                // write/edit: IDE-style numbered content (SS-26/27 look)
+                h.output.setText(numberedBody(item.content,
+                        TextUtils.isEmpty(item.output) ? "" : item.output));
+                h.output.setMaxLines(maxLines);
+                h.output.setEllipsize(null);
+            } else {
+                boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
+                h.output.setText(tailMode ? tail(bodyText, maxLines)
+                        : (item.full ? cap(bodyText, 400) : preview(bodyText, maxLines)));
+                h.output.setMaxLines(maxLines);
+                h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+            }
         }
 
         boolean overflow = total > maxLines;
@@ -729,12 +737,19 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     /** The changed lines themselves: added green, removed red, hunk headers dim. */
+    /** IDE-style diff: line-number gutter, faint green/red row washes like the
+     *  desktop agent UI. Hunk headers give real new-file line numbers. */
     private CharSequence diffSpans(String diff) {
         android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
         int colorAdd = ContextCompat.getColor(ctx, R.color.ok);
         int colorDel = ContextCompat.getColor(ctx, R.color.danger);
-        int colorCtx = ContextCompat.getColor(ctx, R.color.text_disabled);
+        int colorCtx = ContextCompat.getColor(ctx, R.color.text_secondary);
+        int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
+        final int bgAdd = 0x3A2EA043; // faint green wash
+        final int bgDel = 0x3AE53935; // faint red wash
+        final int numW = 4;
         int lines = 0;
+        int fileLine = 1;
         for (String line : diff.split("\n")) {
             if (lines >= 300) {
                 sb.append("…");
@@ -742,16 +757,74 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             }
             if (line.startsWith("+++") || line.startsWith("---")) continue;
             int start = sb.length();
-            sb.append(line);
-            int color;
-            if (line.startsWith("@@")) color = ContextCompat.getColor(ctx, R.color.text_secondary);
-            else if (line.startsWith("+")) color = colorAdd;
-            else if (line.startsWith("-")) color = colorDel;
-            else color = colorCtx;
-            sb.setSpan(new ForegroundColorSpan(color), start, sb.length(),
+            if (line.startsWith("@@")) {
+                int nl = hunkStart(line);
+                if (nl > 0) fileLine = nl;
+                sb.append(line);
+                sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                sb.append('\n');
+                lines++;
+                continue;
+            }
+            boolean add = line.startsWith("+");
+            boolean del = line.startsWith("-");
+            String text = add || del ? line.substring(1) : line;
+            String num = String.valueOf(fileLine);
+            for (int p = num.length(); p < numW; p++) sb.append(' ');
+            sb.append(num).append("  ");
+            sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            int tstart = sb.length();
+            sb.append(text);
+            sb.setSpan(new ForegroundColorSpan(add ? colorAdd : del ? colorDel : colorCtx),
+                    tstart, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (add || del) {
+                sb.setSpan(new android.text.style.BackgroundColorSpan(add ? bgAdd : bgDel),
+                        start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
             sb.append('\n');
+            if (!del) fileLine++;
             lines++;
+        }
+        return sb;
+    }
+
+    /** First new-file line number of a "@@ -a,b +c,d @@" hunk header. */
+    private static int hunkStart(String hunk) {
+        try {
+            int plus = hunk.indexOf('+');
+            if (plus < 0) return -1;
+            int end = plus + 1;
+            while (end < hunk.length() && Character.isDigit(hunk.charAt(end))) end++;
+            return Integer.parseInt(hunk.substring(plus + 1, end));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    /** IDE-style content body: right-aligned line-number gutter + the written
+     *  file, with the tool output trailing in gray (agent-IDE look). */
+    private CharSequence numberedBody(String content, String trailing) {
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+        int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
+        String[] lines = content.split("\n", -1);
+        int cap = Math.min(lines.length, 400);
+        int numW = String.valueOf(cap).length();
+        for (int i = 0; i < cap; i++) {
+            int start = sb.length();
+            String num = String.valueOf(i + 1);
+            for (int p = num.length(); p < numW; p++) sb.append(' ');
+            sb.append(num).append("  ");
+            sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            sb.append(lines[i]).append('\n');
+        }
+        if (!TextUtils.isEmpty(trailing)) {
+            int start = sb.length();
+            sb.append('\n').append(trailing);
+            sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return sb;
     }
