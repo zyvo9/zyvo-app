@@ -393,7 +393,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             android.widget.EditText filterBox =
                     getActivity().findViewById(R.id.session_filter);
             if (searchBtn != null && filterBox != null) {
-                searchBtn.setOnClickListener(v -> {
+                searchBtn.setOnClickListener(sv -> {
                     boolean show = filterBox.getVisibility() != View.VISIBLE;
                     filterBox.setVisibility(show ? View.VISIBLE : View.GONE);
                     if (show) filterBox.requestFocus();
