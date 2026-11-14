@@ -46,5 +46,16 @@ share, 3A all phases in one build.
 - Grok palette, amber kept ONLY on the send button (user choice 1A).
 
 ## NOW:
-Step 13 — preflight passed (java balanced, 118 xml parse, refs resolve);
-commit + push + CI poll, then install and screenshot-compare.
+Step 13 — build 45 (2966682) GREEN + released as apk-45; device install +
+screenshot compare still pending (user's wireless debugging was off).
+
+## NEXT: dual-arch (e7b6ae0)
+- CI fetches BOTH engine zips (aarch64 + x86_64) into jniLibs.
+- Gradle splits (debug default ON) now auto-produce working x86_64 APK +
+  universal APK (arm64 + x86_64 engines, ~135MB).
+- 32-bit guard in EngineManager.doStart: SUPPORTED_64_BIT_ABIS empty ->
+  clear error message instead of confusing spawn failure.
+- pty lib lookup now tries arm64 then x86_64 name (both absent today —
+  no-op, future-proof).
+- Release uploads: arm64-v8a + x86_64 + universal.
+- armeabi-v7a / x86 (32-bit) APKs remain engine-less by design.
