@@ -813,8 +813,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     buf.write(b, 0, n);
                 }
                 in.close();
-                String mime = c.getContentResolver().getType(u);
-                if (mime == null || mime.isEmpty()) mime = "application/octet-stream";
+                String rawMime = c.getContentResolver().getType(u);
+                if (rawMime == null || rawMime.isEmpty()) rawMime = "application/octet-stream";
+                final String mime = rawMime;
                 String dataUrl = "data:" + mime + ";base64,"
                         + android.util.Base64.encodeToString(buf.toByteArray(),
                         android.util.Base64.NO_WRAP);
