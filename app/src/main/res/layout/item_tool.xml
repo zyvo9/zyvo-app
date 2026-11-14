@@ -60,15 +60,6 @@
             android:textSize="13sp" />
 
         <TextView
-            android:id="@+id/diff"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <TextView
             android:id="@+id/tool_name"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -79,6 +70,15 @@
             android:textColor="@color/text_primary"
             android:textSize="13sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/diff"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <ImageView
             android:id="@+id/chevron"

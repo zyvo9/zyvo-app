@@ -570,6 +570,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         String desc = !TextUtils.isEmpty(item.label) ? item.label : clean;
         if (TextUtils.isEmpty(desc)) desc = firstLine(item.output);
         desc = desc == null ? "" : desc.trim();
+        // file rows show the useful path tail, not the /storage/emulated/0/ preamble
+        if (tool.contains("write") || tool.contains("edit") || tool.contains("read")) {
+            desc = shortPath(desc);
+        }
         String title = desc.isEmpty() ? titleFor(item.toolName, clean) : firstLine(desc);
         if (title.length() > 90) title = title.substring(0, 89) + "…";
         h.name.setText(title);
@@ -598,10 +602,15 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             h.diff.setVisibility(View.GONE);
         }
 
-        // Body: command + output + diff. Tap stages 10 lines -> everything -> closed.
-        boolean hasOutput = !TextUtils.isEmpty(item.output);
+        // Body: written content + command output + diff. Tap stages 10 lines ->
+        // everything -> closed, like an agent IDE's tool box.
+        String bodyText = item.output == null ? "" : item.output;
+        if (!TextUtils.isEmpty(item.content)) {
+            bodyText = item.content + (bodyText.isEmpty() ? "" : "\n\n" + bodyText);
+        }
+        boolean hasOutput = !TextUtils.isEmpty(bodyText);
         boolean hasCmd = !TextUtils.isEmpty(clean);
-        int total = hasOutput ? countLines(item.output) : 0;
+        int total = hasOutput ? countLines(bodyText) : 0;
         boolean open = item.expanded || item.full || failed || running;
         int maxLines = item.full ? 400 : (item.expanded ? 10 : 3);
         if (failed && !item.expanded) maxLines = 8;
@@ -615,8 +624,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
         if (open && hasOutput) {
             boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-            h.output.setText(tailMode ? tail(item.output, maxLines)
-                    : (item.full ? cap(item.output, 400) : preview(item.output, maxLines)));
+            h.output.setText(tailMode ? tail(bodyText, maxLines)
+                    : (item.full ? cap(bodyText, 400) : preview(bodyText, maxLines)));
             h.output.setMaxLines(maxLines);
             h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
         }
@@ -667,7 +676,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 || n.contains("terminal")) {
             return done ? "Ran command" : "Running command";
         }
-        if (n.contains("write")) return done ? "Wrote file" : "Writing file";
+        if (n.contains("write")) return done ? "Write file" : "Writing file";
         if (n.contains("patch")) return done ? "Applied patch" : "Applying patch";
         if (n.contains("edit")) return done ? "Edited file" : "Editing file";
         if (n.equals("read") || n.startsWith("read_") || n.endsWith("read")) {
@@ -783,6 +792,20 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
     private static String cap(String s, int maxLines) {
         return preview(s, maxLines);
+    }
+
+    /** Strips device-junk path prefixes so a file row shows its useful tail. */
+    private static String shortPath(String p) {
+        if (p == null) return "";
+        String s = p.trim();
+        String mark = "/storage/emulated/0/";
+        int i = s.indexOf(mark);
+        if (i >= 0) return s.substring(i + mark.length());
+        if (s.startsWith("/storage/emulated/")) return s.substring("/storage/emulated/".length());
+        String home = "/data/data/com.termux/files/home/";
+        if (s.startsWith(home)) return "~/" + s.substring(home.length());
+        if (s.startsWith("/data/data/com.termux/files/")) return "~" + s.substring("/data/data/com.termux/files".length());
+        return s;
     }
 
     private static String firstLine(String s) {

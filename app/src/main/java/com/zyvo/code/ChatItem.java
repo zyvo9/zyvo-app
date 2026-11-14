@@ -37,6 +37,8 @@ public final class ChatItem {
     public String toolName = "";
     public String command = "";
     public String output = "";
+    /** What a write/edit tool wrote (the file content) — shown in the expand box. */
+    public String content = "";
     public String status = "";
     public String diff = "";
     /** Live line count while a write/edit streams (shown as +N before the diff lands). */
