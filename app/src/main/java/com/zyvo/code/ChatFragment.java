@@ -356,6 +356,12 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         adapter.setNoticeAction(this::retryLast);
         adapter.setMessageActions(this::regenerateReply);
         list.setLayoutManager(new LinearLayoutManager(requireContext()));
+        // the default change cross-fade draws the old and the new row on top of
+        // each other mid-stream - reads as doubled text; swap instantly instead
+        if (list.getItemAnimator() instanceof androidx.recyclerview.widget.DefaultItemAnimator) {
+            ((androidx.recyclerview.widget.DefaultItemAnimator) list.getItemAnimator())
+                    .setSupportsChangeAnimations(false);
+        }
         list.setAdapter(adapter);
         list.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
@@ -1083,7 +1089,11 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             if (item.shown > item.fullText.length()) item.shown = 0;
             if (item.shown == 0) item.text = "";
             startReveal();
-            rebind(item);
+            // while the reveal is behind, let IT render the row: a full rebind
+            // here bypasses the reveal and pops the whole text in at once
+            if (!(item.fullText != null && item.fullText.length() > item.shown)) {
+                rebind(item);
+            }
 
         } else if ("tool".equals(ptype)) {
             ChatItem existing = byKey.get(pid);
@@ -1353,6 +1363,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** The single place where a turn really ends. */
     private void finishTurn() {
         finishThoughts();
+        // snap any still-revealing reply in one bind so the turn never ends
+        // with plain text lagging behind the finished markdown render
+        flushReveal();
         removeWorking();
         markTurnDuration();
         stopping = false;
