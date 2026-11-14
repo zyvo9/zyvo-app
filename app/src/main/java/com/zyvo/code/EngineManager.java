@@ -1,6 +1,7 @@
 package com.zyvo.code;
 
 import android.content.Context;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -404,6 +405,13 @@ public final class EngineManager {
     }
 
     private void doStart() {
+        // The engine is a Bun standalone: Bun ships 64-bit only, so a 32-bit
+        // device can never run it. Fail with a clear message instead of a
+        // confusing spawn error deep in startup.
+        if (Build.SUPPORTED_64_BIT_ABIS == null || Build.SUPPORTED_64_BIT_ABIS.length == 0) {
+            setState(State.ERROR, "this device is 32-bit — the zyvo engine needs 64-bit Android (arm64-v8a or x86_64)");
+            return;
+        }
         setState(State.STARTING, "preparing files");
         ensureDirs();
 
@@ -511,6 +519,7 @@ public final class EngineManager {
         File opentui = new File(lib, "libopentui.so");
         if (opentui.exists()) env.put("OPENTUI_LIB_PATH", opentui.getAbsolutePath());
         File pty = new File(lib, "librust_pty_arm64.so");
+        if (!pty.exists()) pty = new File(lib, "librust_pty_x86_64.so");
         if (pty.exists()) env.put("BUN_PTY_LIB", pty.getAbsolutePath());
 
         env.put("OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER", "true");

@@ -26,14 +26,19 @@ jobs:
           set -euo pipefail
           VER="1.17.9"
           BASE="https://github.com/zyvo9/ZYVO-AI/releases/download/android-v${VER}"
-          curl -fsSL -o engine.zip "$BASE/zyvo-${VER}-android-aarch64.zip"
-          unzip -q engine.zip
-          U="data/data/com.termux/files/usr"
-          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/assets
-          cp "$U/libexec/zyvo/zyvo.bin" app/src/main/jniLibs/arm64-v8a/libzyvo.so
-          for f in "$U"/lib/*.so; do cp "$f" app/src/main/jniLibs/arm64-v8a/; done
-          chmod 755 app/src/main/jniLibs/arm64-v8a/libzyvo.so
-          ls -la app/src/main/jniLibs/arm64-v8a/
+          mkdir -p app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/x86_64 app/src/main/assets
+          for ARCH in aarch64 x86_64; do
+            if [ "$ARCH" = "aarch64" ]; then ABI="arm64-v8a"; else ABI="x86_64"; fi
+            curl -fsSL -o "engine-${ARCH}.zip" "$BASE/zyvo-${VER}-android-${ARCH}.zip"
+            unzip -q "engine-${ARCH}.zip" -d "ext-${ARCH}"
+            U="ext-${ARCH}/data/data/com.termux/files/usr"
+            cp "$U/libexec/zyvo/zyvo.bin" "app/src/main/jniLibs/${ABI}/libzyvo.so"
+            for f in "$U"/lib/*.so; do cp "$f" "app/src/main/jniLibs/${ABI}/"; done
+            chmod 755 "app/src/main/jniLibs/${ABI}/libzyvo.so"
+            echo "== jniLibs/${ABI} =="
+            ls -la "app/src/main/jniLibs/${ABI}/"
+            rm -rf "ext-${ARCH}" "engine-${ARCH}.zip"
+          done
           curl -fsSL -o app/src/main/assets/skills.tar.gz "$BASE/skills.tar.gz"
           ls -la app/src/main/assets/
 
@@ -55,4 +60,5 @@ jobs:
             --notes "Zyvo Termux trial build ${GITHUB_SHA:0:7}" || true
           ls -la app/build/outputs/apk/debug/
           gh release upload "$tag" app/build/outputs/apk/debug/*arm64-v8a*.apk --clobber
+          gh release upload "$tag" app/build/outputs/apk/debug/*x86_64*.apk --clobber
           gh release upload "$tag" app/build/outputs/apk/debug/*universal*.apk --clobber
