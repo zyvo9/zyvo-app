@@ -85,6 +85,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                         builder.codeTextColor(ContextCompat.getColor(ctx, R.color.code_text));
                         builder.codeBackgroundColor(ContextCompat.getColor(ctx, R.color.code_bg));
                         builder.codeTypeface(Typeface.MONOSPACE);
+                        // Grok-style text: headings stay body-size (bold carries
+                        // the hierarchy) instead of the giant default h1/h2
+                        builder.headingTextSizeMultipliers(new float[]{1f, 1f, 1f, 1f, 1f, 1f});
+                        builder.linkColor(ContextCompat.getColor(ctx, R.color.ok));
                     }
                 })
                 .build();
