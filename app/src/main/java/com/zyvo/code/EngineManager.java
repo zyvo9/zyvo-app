@@ -230,13 +230,17 @@ public final class EngineManager {
     /** Extra operator instructions the user typed in Settings. */
     public void writeAgentsInstructions() throws IOException {
         String prompt = new Prefs(app).systemPrompt();
+        // App-UI rules ride along in AGENTS.md for every session: the chat UI
+        // already renders file contents and diffs in the tool rows, so pasting
+        // the whole file back into the reply is pure noise on a phone screen.
+        String builtin = "# Zyvo Code app rules\n"
+                + "- The chat UI already renders file contents and diffs inside the tool rows. After a write or edit tool, NEVER paste the file's code back into the reply — one plain line about what the file does is enough.\n"
+                + "- Keep replies short and scannable: the phone screen wraps around 40 characters.\n";
         File agents = new File(workspaceDir, "AGENTS.md");
-        if (prompt == null || prompt.trim().isEmpty()) {
-            if (agents.exists() && agents.length() < 8) agents.delete();
-            return;
-        }
+        String full = (prompt == null || prompt.trim().isEmpty()
+                ? "" : prompt.trim() + "\n\n") + builtin;
         try (OutputStream os = new FileOutputStream(agents)) {
-            os.write(prompt.getBytes(StandardCharsets.UTF_8));
+            os.write(full.getBytes(StandardCharsets.UTF_8));
         }
     }
 
