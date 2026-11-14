@@ -1250,6 +1250,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             if (isBookkeeping(toolName, cmd)) item.hidden = true;
             item.command = cmd;
             item.diff = str(state, "diff");
+            // Some engine states ship no diff — synthesize one from the edit
+            // input so the removed(−)/added(+) lines always render red/green.
+            if (TextUtils.isEmpty(item.diff)) {
+                String oldS = str(inp, "oldString");
+                String newS = str(inp, "newString");
+                if (!oldS.isEmpty() || !newS.isEmpty()) {
+                    StringBuilder d = new StringBuilder();
+                    for (String l : oldS.split("\n", -1)) d.append('-').append(l).append('\n');
+                    for (String l : newS.split("\n", -1)) d.append('+').append(l).append('\n');
+                    item.diff = d.toString();
+                }
+            }
             // While a write/edit is still streaming the engine may already expose
             // the growing content - show +N lines so the counter climbs live.
             String wContent = str(inp, "content");

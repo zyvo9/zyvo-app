@@ -750,8 +750,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         int colorDel = ContextCompat.getColor(ctx, R.color.danger);
         int colorCtx = ContextCompat.getColor(ctx, R.color.text_secondary);
         int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
-        final int bgAdd = 0x3A2EA043; // faint green wash
-        final int bgDel = 0x3AE53935; // faint red wash
+        final int bgAdd = 0x66346E3F; // solid green wash (SS-28 look)
+        final int bgDel = 0x66763A3A; // solid red wash
         final int numW = 4;
         int lines = 0;
         int fileLine = 1;
