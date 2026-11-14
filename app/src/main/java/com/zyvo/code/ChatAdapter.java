@@ -613,6 +613,14 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
         boolean showBody = open && (hasCmd || hasOutput || hasDiff);
         h.body.setVisibility(showBody ? View.VISIBLE : View.GONE);
+        // agent-IDE panel: pure additions = green box, pure deletions = red box,
+        // mixed edits keep the neutral body
+        if (!TextUtils.isEmpty(item.content) || (item.showDiff && hasDiff)) {
+            h.body.setBackgroundResource(add > 0 && del == 0 ? R.drawable.bg_diff_add
+                    : del > 0 && add == 0 ? R.drawable.bg_diff_del : 0);
+        } else {
+            h.body.setBackgroundResource(0);
+        }
 
         h.cmdLine.setVisibility(open && hasCmd ? View.VISIBLE : View.GONE);
         if (open && hasCmd) h.cmdLine.setText(clean);
@@ -875,7 +883,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             if (i >= 0) {
                 SpannableString sp = new SpannableString(s);
                 sp.setSpan(new ForegroundColorSpan(
-                        ContextCompat.getColor(ctx, R.color.text_disabled)),
+                        ContextCompat.getColor(ctx, R.color.text_faint)),
                         i, i + m.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 return sp;
             }
