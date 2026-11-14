@@ -570,13 +570,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         String desc = !TextUtils.isEmpty(item.label) ? item.label : clean;
         if (TextUtils.isEmpty(desc)) desc = firstLine(item.output);
         desc = desc == null ? "" : desc.trim();
-        // file rows show the useful path tail, not the /storage/emulated/0/ preamble
-        if (tool.contains("write") || tool.contains("edit") || tool.contains("read")) {
-            desc = shortPath(desc);
-        }
         String title = desc.isEmpty() ? titleFor(item.toolName, clean) : firstLine(desc);
         if (title.length() > 90) title = title.substring(0, 89) + "…";
-        h.name.setText(title);
+        h.name.setText(fadedPrefix(title));
         h.name.setTextColor(ContextCompat.getColor(ctx,
                 failed ? R.color.danger : R.color.text_primary));
 
@@ -794,17 +790,23 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         return preview(s, maxLines);
     }
 
-    /** Strips device-junk path prefixes so a file row shows its useful tail. */
-    private static String shortPath(String p) {
-        if (p == null) return "";
-        String s = p.trim();
-        String mark = "/storage/emulated/0/";
-        int i = s.indexOf(mark);
-        if (i >= 0) return s.substring(i + mark.length());
-        if (s.startsWith("/storage/emulated/")) return s.substring("/storage/emulated/".length());
-        String home = "/data/data/com.termux/files/home/";
-        if (s.startsWith(home)) return "~/" + s.substring(home.length());
-        if (s.startsWith("/data/data/com.termux/files/")) return "~" + s.substring("/data/data/com.termux/files".length());
+    /** File rows keep the full path but the device preamble renders faint gray,
+     *  so the real folder/file part pops like in an agent IDE. */
+    private CharSequence fadedPrefix(String s) {
+        if (s == null) return "";
+        String[] marks = {"/storage/emulated/0/", "/storage/emulated/",
+                "/data/data/com.termux/files/home/", "/data/data/com.termux/files/",
+                "/data/data/com.termux/"};
+        for (String m : marks) {
+            int i = s.indexOf(m);
+            if (i >= 0) {
+                SpannableString sp = new SpannableString(s);
+                sp.setSpan(new ForegroundColorSpan(
+                        ContextCompat.getColor(ctx, R.color.text_disabled)),
+                        i, i + m.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                return sp;
+            }
+        }
         return s;
     }
 
