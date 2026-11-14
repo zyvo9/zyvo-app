@@ -3,7 +3,9 @@ package com.zyvo.code;
 import com.termux.R;
 
 import android.content.Context;
+import android.content.ClipData;
 import android.content.Intent;
+import android.net.Uri;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -114,7 +116,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                         + liveDuration(System.currentTimeMillis() - workingStartMs)
                         + ctxSuffix());
             }
-            if (busy) ui.postDelayed(this, 1000);
+            // keep ticking for the whole turn even when a tool event flips
+            // busy off between steps — the strip must never blink away
+            if (workingStartMs > 0) ui.postDelayed(this, 1000);
         }
     };
 
@@ -326,6 +330,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         workingBar = v.findViewById(R.id.working_bar);
         workingBarText = v.findViewById(R.id.working_text);
         workingSpinner = v.findViewById(R.id.working_spinner);
+        attachRow = v.findViewById(R.id.attach_row);
         queuedBar = v.findViewById(R.id.queued_bar);
         queuedText = v.findViewById(R.id.queued_text);
         View queuedCancel = v.findViewById(R.id.queued_cancel);
@@ -381,6 +386,35 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         RecyclerView sessionList = getActivity() == null
                 ? null : getActivity().findViewById(R.id.session_list);
         if (sessionList != null) {
+            // drawer search: the magnifier toggles a filter box above the list
+            View searchBtn = getActivity().findViewById(R.id.btn_session_search);
+            android.widget.EditText filterBox =
+                    getActivity().findViewById(R.id.session_filter);
+            if (searchBtn != null && filterBox != null) {
+                searchBtn.setOnClickListener(v -> {
+                    boolean show = filterBox.getVisibility() != View.VISIBLE;
+                    filterBox.setVisibility(show ? View.VISIBLE : View.GONE);
+                    if (show) filterBox.requestFocus();
+                    else {
+                        filterBox.setText("");
+                        sessionAdapter.setFilter("");
+                    }
+                });
+                filterBox.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                    }
+
+                    @Override
+                    public void onTextChanged(CharSequence s, int a, int b, int c) {
+                    }
+
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {
+                        sessionAdapter.setFilter(s.toString());
+                    }
+                });
+            }
             sessionAdapter = new SessionAdapter(requireContext(), new SessionAdapter.Listener() {
                 @Override
                 public void onSessionClick(SessionAdapter.Session session) {
@@ -712,75 +746,145 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     /** Composer "+" menu: new chat, terminal, settings. */
     private void showPlusMenu(View anchor) {
-        final Context ctx = requireContext();
-        final PopupWindow[] holder = new PopupWindow[1];
+        // the + is the attach tray: pick any file(s) from the device and they
+        // ride along with the next prompt as engine file parts
+        Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        startActivityForResult(
+                Intent.createChooser(pick, getString(R.string.attach_files)), REQ_ATTACH);
+    }
 
-        LinearLayout card = new LinearLayout(ctx);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundResource(R.drawable.bg_popup_card);
-        card.setPadding(dp(6), dp(6), dp(6), dp(6));
+    /** One pending attachment: file name + mime + data URL ready for the engine. */
+    private static final class Attach {
+        final String name;
+        final String mime;
+        final String dataUrl;
 
-        TypedValue tv = new TypedValue();
-        ctx.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
-        int rowBg = tv.resourceId;
-
-        String[] labels = {getString(R.string.new_chat), getString(R.string.tab_terminal),
-                getString(R.string.tab_settings)};
-        int[] icons = {R.drawable.ic_add, R.drawable.ic_terminal, R.drawable.ic_settings};
-        Runnable[] actions = {
-                this::newSession,
-                this::openTerminal,
-                this::openSettings
-        };
-
-        for (int i = 0; i < labels.length; i++) {
-            final int index = i;
-            LinearLayout row = new LinearLayout(ctx);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), 0, dp(10), 0);
-            row.setBackgroundResource(rowBg);
-
-            ImageView icon = new ImageView(ctx);
-            icon.setImageResource(icons[i]);
-            icon.setImageTintList(ColorStateList.valueOf(
-                    ContextCompat.getColor(ctx, R.color.text_secondary)));
-            row.addView(icon, new LinearLayout.LayoutParams(dp(18), dp(18)));
-
-            TextView label = new TextView(ctx);
-            label.setText(labels[i]);
-            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            label.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            lp.setMarginStart(dp(12));
-            row.addView(label, lp);
-
-            row.setOnClickListener(v -> {
-                if (holder[0] != null) holder[0].dismiss();
-                actions[index].run();
-            });
-            card.addView(row, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+        Attach(String name, String mime, String dataUrl) {
+            this.name = name;
+            this.mime = mime;
+            this.dataUrl = dataUrl;
         }
+    }
 
-        int width = dp(200);
-        int height = dp(44) * labels.length + dp(12);
-        PopupWindow popup = new PopupWindow(card, width, height, true);
-        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        popup.setOutsideTouchable(true);
-        popup.setElevation(dp(12));
-        holder[0] = popup;
+    private static final int REQ_ATTACH = 4201;
+    private final java.util.List<Attach> attachments = new ArrayList<>();
+    private LinearLayout attachRow;
 
-        int screenW = getResources().getDisplayMetrics().widthPixels;
-        int[] loc = new int[2];
-        anchor.getLocationOnScreen(loc);
-        int x = loc[0];
-        if (x + width > screenW - dp(8)) x = screenW - width - dp(8);
-        if (x < dp(8)) x = dp(8);
-        int y = loc[1] - height - dp(8);
-        if (y < dp(8)) y = loc[1] + anchor.getHeight() + dp(8);
-        popup.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y);
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_ATTACH || resultCode != android.app.Activity.RESULT_OK
+                || data == null || !isAdded()) return;
+        List<Uri> uris = new ArrayList<>();
+        if (data.getData() != null) uris.add(data.getData());
+        ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri u = clip.getItemAt(i).getUri();
+                if (u != null) uris.add(u);
+            }
+        }
+        for (Uri u : uris) readAttachment(u);
+    }
+
+    /** Reads one picked file (size-guarded) into a data URL on the io thread. */
+    private void readAttachment(Uri u) {
+        final Context c = requireContext();
+        io.execute(() -> {
+            try {
+                InputStream in = c.getContentResolver().openInputStream(u);
+                if (in == null) return;
+                ByteArrayOutputStream buf = new ByteArrayOutputStream();
+                byte[] b = new byte[8192];
+                long total = 0;
+                int n;
+                while ((n = in.read(b)) > 0) {
+                    total += n;
+                    if (total > 6L * 1024 * 1024) {
+                        in.close();
+                        ui.post(() -> UiUtil.toast(c, getString(R.string.attach_too_big)));
+                        return;
+                    }
+                    buf.write(b, 0, n);
+                }
+                in.close();
+                String mime = c.getContentResolver().getType(u);
+                if (mime == null || mime.isEmpty()) mime = "application/octet-stream";
+                String dataUrl = "data:" + mime + ";base64,"
+                        + android.util.Base64.encodeToString(buf.toByteArray(),
+                        android.util.Base64.NO_WRAP);
+                ui.post(() -> {
+                    attachments.add(new Attach(attachName(c, u), mime, dataUrl));
+                    refreshAttachRow();
+                });
+            } catch (Exception e) {
+                ui.post(() -> UiUtil.toast(c, "Attach failed: " + e.getMessage()));
+            }
+        });
+    }
+
+    private static String attachName(Context c, Uri u) {
+        try (android.database.Cursor cur = c.getContentResolver().query(u, null, null, null, null)) {
+            if (cur != null && cur.moveToFirst()) {
+                int i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (i >= 0) {
+                    String n = cur.getString(i);
+                    if (!TextUtils.isEmpty(n)) return n;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        String last = u.getLastPathSegment();
+        return last == null ? "file" : last;
+    }
+
+    private void refreshAttachRow() {
+        if (attachRow == null) return;
+        attachRow.removeAllViews();
+        attachRow.setVisibility(attachments.isEmpty() ? View.GONE : View.VISIBLE);
+        for (int i = 0; i < attachments.size(); i++) {
+            final Attach a = attachments.get(i);
+            LinearLayout chip = new LinearLayout(requireContext());
+            chip.setOrientation(LinearLayout.HORIZONTAL);
+            chip.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            chip.setBackgroundResource(R.drawable.bg_popup_card);
+            chip.setPadding(dp(8), dp(4), dp(8), dp(4));
+
+            TextView label = new TextView(requireContext());
+            String n = a.name == null ? "file" : a.name;
+            label.setText(n.length() > 24 ? n.substring(0, 23) + "…" : n);
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            label.setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary));
+            chip.addView(label);
+
+            ImageView x = new ImageView(requireContext());
+            x.setImageResource(R.drawable.ic_lc_circle_x);
+            x.setImageTintList(ColorStateList.valueOf(
+                    ContextCompat.getColor(requireContext(), R.color.text_disabled)));
+            x.setContentDescription(getString(R.string.attach_remove));
+            LinearLayout.LayoutParams xlp = new LinearLayout.LayoutParams(dp(14), dp(14));
+            xlp.setMarginStart(dp(6));
+            x.setLayoutParams(xlp);
+            x.setOnClickListener(v -> {
+                int idx = attachments.indexOf(a);
+                if (idx >= 0) attachments.remove(idx);
+                refreshAttachRow();
+            });
+            chip.addView(x);
+
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            clp.setMarginEnd(dp(6));
+            attachRow.addView(chip, clp);
+        }
+    }
+
+    private void clearAttachments() {
+        attachments.clear();
+        refreshAttachRow();
     }
 
     private void refreshAgentChip() {
@@ -1322,7 +1426,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private void sendMessage() {
         final String text = input.getText().toString().trim();
-        if (TextUtils.isEmpty(text)) return;
+        if (TextUtils.isEmpty(text) && attachments.isEmpty()) return;
         if (!engine.isReady()) {
             UiUtil.toast(requireContext(), "Engine is still starting — one moment");
             return;
@@ -1338,6 +1442,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         lastAssistantDone = true;
         pinnedToBottom = true;
 
+        // attachments ride along with this prompt, then the tray clears
+        final List<JsonObject> fileParts = new ArrayList<>();
+        for (Attach a : attachments) {
+            JsonObject p = new JsonObject();
+            p.addProperty("type", "file");
+            p.addProperty("mime", a.mime);
+            p.addProperty("url", a.dataUrl);
+            if (!TextUtils.isEmpty(a.name)) p.addProperty("filename", a.name);
+            fileParts.add(p);
+        }
+        clearAttachments();
+
         setBusy(true);
         scrollToBottom();
         ui.postDelayed(this::scrollToBottom, 90);
@@ -1350,7 +1466,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     prefs.setLastSessionId(sessionId);
                 }
                 api.promptAsync(sessionId, text, prefs.variantOf(prefs.modelId()),
-                        prefs.agentMode());
+                        prefs.agentMode(), fileParts);
             } catch (Exception e) {
                 final String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 ui.post(() -> {
@@ -1492,7 +1608,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             send.setContentDescription(getString(value ? R.string.stop : R.string.send));
         }
         if (workingBar != null) {
-            if (value) {
+            // the strip lives for the WHOLE turn: tool events flip busy off
+            // between steps, but the strip only goes away when the turn ends
+            if (value || workingStartMs > 0) {
                 if (workingBar.getVisibility() != View.VISIBLE) {
                     workingBar.setVisibility(View.VISIBLE);
                     workingBar.setAlpha(0f);
@@ -1504,16 +1622,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             }
         }
         if (workingSpinner != null) {
-            workingSpinner.setVisibility(value ? View.VISIBLE : View.GONE);
+            workingSpinner.setVisibility(value || workingStartMs > 0 ? View.VISIBLE : View.GONE);
         }
         ui.removeCallbacks(workingTick);
-        if (value) {
-            lastSignalMs = System.currentTimeMillis();
-            stallWarned = false;
+        if (value || workingStartMs > 0) {
+            if (value) {
+                lastSignalMs = System.currentTimeMillis();
+                stallWarned = false;
+                ui.postDelayed(busyWatchdog, 180_000L);
+                ui.postDelayed(stallTick, 5000L);
+            }
             if (workingBarText != null) workingBarText.setText(workingLabel());
             ui.postDelayed(workingTick, 1000);
-            ui.postDelayed(busyWatchdog, 180_000L);
-            ui.postDelayed(stallTick, 5000L);
         }
     }
 

@@ -333,6 +333,20 @@
             android:tint="@color/text_disabled" />
     </LinearLayout>
 
+    <!-- attachment tray: chips for files picked with the + button -->
+    <LinearLayout
+        android:id="@+id/attach_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
     <!-- pinned working strip: stays above the composer for the whole turn -->
     <LinearLayout
         android:id="@+id/working_bar"

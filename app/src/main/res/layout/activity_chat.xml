@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:background="@color/bg" />
 
-    <!-- ChatGPT-style session drawer -->
+    <!-- Session drawer (ZCode desktop sidebar style) -->
     <LinearLayout
         android:id="@+id/drawer_panel"
         android:layout_width="300dp"
@@ -35,6 +35,7 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <!-- top menu: New task / Terminal / Settings -->
         <LinearLayout
             android:id="@+id/btn_drawer_new"
             android:layout_width="match_parent"
@@ -67,17 +68,130 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <TextView
+        <LinearLayout
+            android:id="@+id/btn_drawer_terminal"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_terminal"
+                android:tint="@color/text_secondary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="@string/tab_terminal"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btn_drawer_settings"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_settings"
+                android:tint="@color/text_secondary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="@string/tab_settings"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Task list header + search + engine log -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:paddingStart="18dp"
-            android:paddingEnd="18dp"
-            android:paddingBottom="6dp"
-            android:text="@string/chats"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:paddingEnd="10dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/task_list"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/btn_session_search"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:contentDescription="@string/filter_hint"
+                android:padding="7dp"
+                android:src="@drawable/ic_lc_search"
+                android:tint="@color/text_secondary"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <ImageView
+                android:id="@+id/btn_drawer_log"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:contentDescription="@string/engine_logs"
+                android:padding="7dp"
+                android:src="@drawable/ic_lc_wrench"
+                android:tint="@color/text_secondary"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/session_filter"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_popup_card"
+            android:hint="@string/filter_hint"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_disabled"
+            android:textSize="13sp"
+            android:visibility="gone" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/session_list"
@@ -95,88 +209,45 @@
             android:layout_height="1dp"
             android:background="@color/line" />
 
+        <!-- profile row -->
         <LinearLayout
-            android:id="@+id/btn_drawer_terminal"
+            android:id="@+id/btn_drawer_profile"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
+            android:layout_height="52dp"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="18dp"
-            android:paddingEnd="18dp">
-
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_terminal"
-                android:tint="@color/text_secondary" />
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp">
 
             <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="@string/tab_terminal"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_avatar"
+                android:gravity="center"
+                android:text="MM"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/btn_drawer_log"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="18dp"
-            android:paddingEnd="18dp">
-
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_terminal"
-                android:tint="@color/text_secondary" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
-                android:text="@string/engine_logs"
+                android:layout_weight="1"
+                android:text="@string/profile_name"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/btn_drawer_settings"
-            android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="18dp"
-            android:paddingEnd="18dp">
+                android:textSize="14sp"
+                android:textStyle="bold" />
 
             <ImageView
                 android:layout_width="18dp"
                 android:layout_height="18dp"
-                android:contentDescription="@null"
+                android:contentDescription="@string/tab_settings"
                 android:src="@drawable/ic_settings"
                 android:tint="@color/text_secondary" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="@string/tab_settings"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>

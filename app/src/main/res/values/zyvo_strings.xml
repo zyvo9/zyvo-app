@@ -11,7 +11,7 @@
     <string name="send">Send</string>
     <string name="stop">Stop</string>
     <string name="new_session">New session</string>
-    <string name="new_chat">New chat</string>
+    <string name="new_chat">New task</string>
     <string name="sessions">Sessions</string>
     <string name="drawer_model_fmt">Model Â· %1$s</string>
     <string name="session_rename">Rename</string>
@@ -91,6 +91,12 @@
     <string name="err_aborted_body">You stopped this reply.</string>
     <string name="err_context_body">The conversation is too long for this model. Start a new chat to keep going.</string>
     <string name="err_output_body">The model hit its output limit. Ask it to continue.</string>
-    <string name="err_auth_body">The provider rejected the key. Open Settings and check the model key.</string>    <string name="regenerate_busy">Wait for this turn to finish first</string></resources>
+    <string name="err_auth_body">The provider rejected the key. Open Settings and check the model key.</string>    <string name="regenerate_busy">Wait for this turn to finish first</string>    <string name="task_list">Task list</string>
+    <string name="filter_hint">Filter chats</string>
+    <string name="profile_name">Md Morad</string>
+    <string name="attach_files">Attach files</string>
+    <string name="attach_too_big">File is too big (max 6 MB each)</string>
+    <string name="attach_remove">Remove attachment</string>
+</resources>
 
 

@@ -128,12 +128,20 @@ public final class ApiClient {
 
     public void promptAsync(String sessionId, String text, String variant, String agent)
             throws IOException {
+        promptAsync(sessionId, text, variant, agent, null);
+    }
+
+    public void promptAsync(String sessionId, String text, String variant, String agent,
+                            java.util.List<JsonObject> fileParts) throws IOException {
         JsonObject payload = new JsonObject();
         JsonArray parts = new JsonArray();
         JsonObject part = new JsonObject();
         part.addProperty("type", "text");
         part.addProperty("text", text);
         parts.add(part);
+        if (fileParts != null) {
+            for (JsonObject f : fileParts) parts.add(f);
+        }
         payload.add("parts", parts);
 
         JsonObject model = new JsonObject();

@@ -11,9 +11,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -40,8 +38,9 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     private final Context ctx;
     private final List<Session> items = new ArrayList<>();
+    private final List<Session> shown = new ArrayList<>();
     private final Listener listener;
-    private final SimpleDateFormat fmt = new SimpleDateFormat("MMM d · h:mm a", Locale.getDefault());
+    private String filter = "";
     private String currentId = "";
 
     public SessionAdapter(Context ctx, Listener listener) {
@@ -53,6 +52,33 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
         items.clear();
         if (sessions != null) items.addAll(sessions);
         notifyDataSetChanged();
+    }
+
+    /** "now" / "5m" / "3h" / "2d" — sidebar-style relative task time. */
+    private static String relTime(long ms) {
+        if (ms <= 0) return "";
+        long s = (System.currentTimeMillis() - ms) / 1000;
+        if (s < 0) s = 0;
+        if (s < 60) return "now";
+        long m = s / 60;
+        if (m < 60) return m + "m";
+        long hr = m / 60;
+        if (hr < 24) return hr + "h";
+        return hr / 24 + "d";
+    }
+
+    public void setFilter(String text) {
+        filter = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        notifyDataSetChanged();
+    }
+
+    private List<Session> visible() {
+        if (filter.isEmpty()) return items;
+        shown.clear();
+        for (Session s : items) {
+            if (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(filter)) shown.add(s);
+        }
+        return shown;
     }
 
     public void setCurrent(String id) {
@@ -68,9 +94,9 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     @Override
     public void onBindViewHolder(@NonNull VH h, int position) {
-        Session s = items.get(position);
+        Session s = visible().get(position);
         h.title.setText(s.title);
-        h.meta.setText(fmt.format(new Date(s.updated > 0 ? s.updated : System.currentTimeMillis())));
+        h.meta.setText(relTime(s.updated));
         boolean current = s.id.equals(currentId);
         h.itemView.setSelected(current);
         h.title.setTextColor(h.itemView.getResources().getColor(
@@ -84,7 +110,7 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     @Override
     public int getItemCount() {
-        return items.size();
+        return visible().size();
     }
 
     static final class VH extends RecyclerView.ViewHolder {

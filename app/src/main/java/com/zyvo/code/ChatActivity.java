@@ -10,6 +10,7 @@ import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ScrollView;
@@ -71,6 +72,13 @@ public final class ChatActivity extends AppCompatActivity {
             closeDrawer();
         });
 
+        View profile = findViewById(R.id.btn_drawer_profile);
+        if (profile != null) {
+            profile.setOnClickListener(v -> {
+                openSettings();
+                closeDrawer();
+            });
+        }
     }
 
     @Override
