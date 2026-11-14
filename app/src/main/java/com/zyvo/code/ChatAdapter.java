@@ -987,11 +987,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     static final class SummaryVH extends RecyclerView.ViewHolder {
+        final ImageView icon;
         final TextView text;
         final ImageView chevron;
 
         SummaryVH(@NonNull View v) {
             super(v);
+            icon = v.findViewById(R.id.summary_icon);
             text = v.findViewById(R.id.summary_text);
             chevron = v.findViewById(R.id.summary_chevron);
         }

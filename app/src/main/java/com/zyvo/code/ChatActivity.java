@@ -48,6 +48,15 @@ public final class ChatActivity extends AppCompatActivity {
 
         drawer = findViewById(R.id.drawer_layout);
 
+        // ChatActivity is the only launcher, so the stock Termux first-run flow
+        // never triggers. Install the bootstrap (files/usr: bash, pkg, apt)
+        // ourselves, or the engine's shell is stuck with toybox-only commands.
+        try {
+            com.termux.app.TermuxInstaller.setupBootstrapIfNeeded(this, () -> { });
+        } catch (Throwable t) {
+            // engine still works on toybox; the log dialog shows what failed
+        }
+
         if (savedInstanceState == null) {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.zyvo_chat_container, new ChatFragment())

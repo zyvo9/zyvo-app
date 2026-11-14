@@ -234,7 +234,7 @@ public final class EngineManager {
         // already renders file contents and diffs in the tool rows, so pasting
         // the whole file back into the reply is pure noise on a phone screen.
         String builtin = "# Zyvo Code app rules\n"
-                + "- The chat UI already renders file contents and diffs inside the tool rows. After a write or edit tool, NEVER paste the file's code back into the reply — one plain line about what the file does is enough.\n"
+                + "- The chat UI already renders file contents and diffs inside the expandable tool rows. After a write or edit tool — or whenever you produced code — NEVER paste the full file or a big code block back into the reply. One plain line about what it does is enough. Show code inline ONLY when the user explicitly asks to see the code itself.\n"
                 + "- Keep replies short and scannable: the phone screen wraps around 40 characters.\n";
         File agents = new File(workspaceDir, "AGENTS.md");
         String full = (prompt == null || prompt.trim().isEmpty()

@@ -237,6 +237,12 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     private final java.util.HashMap<String, String> partTypes = new java.util.HashMap<>();
     // deltas that arrived before the part announced its type
     private final java.util.HashMap<String, StringBuilder> pendingDeltas = new java.util.HashMap<>();
+    // Explore card (SS-29): consecutive read-only rows fold into one collapsible
+    // card while the agent scouts; it collapses the moment real work begins.
+    private ChatItem exploreCard;
+    private int exploreGroupId;
+    private int exploreFiles;
+    private int groupSeq;
     // thought rows that got new tokens; flushed at most every 60 ms
     private final java.util.LinkedHashSet<ChatItem> dirtyThoughts = new java.util.LinkedHashSet<>();
     private boolean thoughtScheduled;
@@ -1178,6 +1184,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             String text = str(part, "text");
             if (TextUtils.isEmpty(text)) return;
             clearRetryNotice();
+            closeExplore();
             String mid = str(part, "messageID");
             if (messageRoles.get(mid) == null && sentTexts.contains(normalize(text))) {
                 messageRoles.put(mid, "user");
@@ -1241,6 +1248,39 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 finishThoughts();
                 item = ChatItem.tool(pid);
                 addItem(item);
+            }
+
+            // ---- Explore card (SS-29): consecutive read-only rows fold into one
+            // collapsible card; real work (write/edit) or a reply closes it.
+            if (isExploreTool(toolName, cmd)) {
+                if (exploreCard == null) {
+                    int idx = items.indexOf(item);
+                    int prev = idx - 1;
+                    while (prev >= 0 && items.get(prev).kind == ChatItem.THOUGHT) prev--;
+                    if (prev >= 0 && items.get(prev).kind == ChatItem.TOOL
+                            && items.get(prev).group == 0
+                            && isExploreTool(items.get(prev).toolName, items.get(prev).command)) {
+                        exploreGroupId = ++groupSeq;
+                        ChatItem card = ChatItem.summary(exploreGroupId);
+                        card.expanded = true;
+                        card.text = "Explore · 2 files";
+                        items.add(prev, card);
+                        byKey.put(card.key, card);
+                        adapter.notifyItemInserted(prev);
+                        items.get(prev + 1).group = exploreGroupId;
+                        adapter.notifyItemChanged(prev + 1);
+                        exploreCard = card;
+                        exploreFiles = 2;
+                    }
+                } else {
+                    item.group = exploreGroupId;
+                    exploreFiles++;
+                    exploreCard.text = "Explore · " + exploreFiles + " files";
+                    int ci = items.indexOf(exploreCard);
+                    if (ci >= 0) adapter.notifyItemChanged(ci);
+                }
+            } else if (exploreCard != null) {
+                closeExplore();
             }
 
             item.toolName = toolName;
@@ -1429,6 +1469,47 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 || p.contains("/vault/");
     }
 
+    /** Read-only reconnaissance rows fold into the Explore card (SS-29). */
+    private static boolean isExploreTool(String toolName, String cmd) {
+        String n = toolName == null ? "" : toolName.toLowerCase(Locale.ROOT);
+        if (n.contains("read") || n.contains("grep") || n.contains("glob") || n.contains("find")
+                || n.contains("list") || n.contains("webfetch") || n.contains("web")) return true;
+        if (n.contains("bash") || n.contains("shell") || n.contains("exec") || n.contains("terminal")) {
+            String c = cmd == null ? "" : cmd.trim().toLowerCase(Locale.ROOT);
+            int guard = 0;
+            while (c.startsWith("export ") && guard++ < 4) {
+                int sep = c.indexOf(';');
+                if (sep < 0) break;
+                c = c.substring(sep + 1).trim();
+            }
+            return c.startsWith("ls") || c.startsWith("cat ") || c.startsWith("head")
+                    || c.startsWith("tail") || c.startsWith("find") || c.startsWith("grep")
+                    || c.startsWith("rg ") || c.startsWith("wc ") || c.startsWith("du ")
+                    || c.startsWith("df") || c.startsWith("which") || c.startsWith("echo ")
+                    || c.startsWith("pwd") || c.startsWith("command -v") || c.startsWith("for ");
+        }
+        return false;
+    }
+
+    /** The scouting phase is over: collapse the Explore card, let the real work show. */
+    private void closeExplore() {
+        if (exploreCard == null) return;
+        exploreCard.expanded = false;
+        int idx = items.indexOf(exploreCard);
+        if (idx >= 0) {
+            adapter.notifyItemChanged(idx);
+            int p = idx + 1;
+            while (p < items.size()) {
+                ChatItem c = items.get(p);
+                if (c.kind != ChatItem.TOOL || c.group != exploreCard.group) break;
+                adapter.notifyItemChanged(p);
+                p++;
+            }
+        }
+        exploreCard = null;
+        exploreGroupId = 0;
+    }
+
     private static long num(JsonObject o, String key) {
         try {
             return o.has(key) && o.get(key).isJsonPrimitive() ? o.get(key).getAsLong() : 0;
@@ -1452,6 +1533,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         addItem(ChatItem.user(text));
         rememberSent(text);
         banner.setVisibility(View.GONE);
+        closeExplore();
         workingStartMs = System.currentTimeMillis();
         turnAssistantKey = null;
         lastAssistantDone = true;
@@ -1498,6 +1580,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** The single place where a turn really ends. */
     private void finishTurn() {
         finishThoughts();
+        closeExplore();
         // snap any still-revealing reply in one bind so the turn never ends
         // with plain text lagging behind the finished markdown render
         flushReveal();
