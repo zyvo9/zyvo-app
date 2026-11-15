@@ -129,7 +129,8 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="monospace"
                     android:textColor="@color/text_primary"
-                    android:textIsSelectable="true"
+                    android:textColorHighlight="@color/select_blue"
+                android:textIsSelectable="true"
                     android:textSize="12sp"
                     android:visibility="gone" />
 
@@ -154,7 +155,8 @@
                     android:fontFamily="monospace"
                     android:lineSpacingExtra="2dp"
                     android:textColor="@color/text_secondary"
-                    android:textIsSelectable="true"
+                    android:textColorHighlight="@color/select_blue"
+                android:textIsSelectable="true"
                     android:textSize="11sp"
                     android:visibility="gone" />
 
@@ -178,6 +180,7 @@
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="2dp"
                 android:textColor="@color/text_secondary"
+                android:textColorHighlight="@color/select_blue"
                 android:textIsSelectable="true"
                 android:textSize="11sp"
                 android:visibility="gone" />
@@ -200,6 +203,7 @@
                 android:fontFamily="monospace"
                 android:lineSpacingExtra="1dp"
                 android:textColor="@color/text_secondary"
+                android:textColorHighlight="@color/select_blue"
                 android:textIsSelectable="true"
                 android:textSize="10sp"
                 android:visibility="gone" />

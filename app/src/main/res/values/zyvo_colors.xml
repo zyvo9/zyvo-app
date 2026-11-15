@@ -54,4 +54,5 @@
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="text_faint">#4A4A4A</color>
+    <color name="select_blue">#405C9EE8</color>
 </resources>

@@ -155,8 +155,9 @@ public final class ChatActivity extends AppCompatActivity {
                         tag = body.substring(a, e);
                     }
                 }
-                int latest = -1;
-                if (tag.startsWith("apk-")) latest = Integer.parseInt(tag.substring(4).trim());
+                int latestRaw = -1;
+                if (tag.startsWith("apk-")) latestRaw = Integer.parseInt(tag.substring(4).trim());
+                final int latest = latestRaw;
                 final int mine = com.termux.BuildConfig.ZYVO_BUILD;
                 android.content.SharedPreferences sp = getSharedPreferences("zyvo_app", MODE_PRIVATE);
                 if (latest > mine && latest != sp.getInt("update_seen", -1)) {
