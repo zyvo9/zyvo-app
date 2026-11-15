@@ -278,3 +278,66 @@ main CSS `out/renderer/assets/styles-NK68EN_n.css`, 480KB, 59 keyframes).
 - Preflight recipe: `Temp\zyvo\paren_check.py` (strings/comments stripped -
   the raw-count check_refs.py gives false positives) + xml.dom.minidom parse
   of every res XML.
+
+## 2026-11-16 - full-project review + verified release state (apk-86)
+- HEAD = origin/master = 7d6651a (nothing unpushed). apk-86 (run 86, green)
+  publishes THREE assets: arm64-v8a 97.5MB, universal 222.4MB, x86_64 81.4MB.
+  Verified by unzipping the x86_64 APK: lib/x86_64/libzyvo.so = 95.5MB (the
+  real x86_64 engine) + libopentui/libc++_shared + libtermux-bootstrap 29MB.
+  => "one APK for both arches" ALREADY works: the universal APK carries both
+  engines; per-ABI APKs are the slim option. Engine zips: aarch64 53.4MB,
+  x86_64 39MB; the x86_64 zip has NO librust_pty_* and NO libtagfix.so (arm64
+  only), so BUN_PTY_LIB stays unset on x86_64 (EngineManager has the
+  librust_pty_x86_64.so fallback but that file does not exist).
+- 32-bit (armeabi-v7a / x86) is impossible: engine is a Bun standalone and Bun
+  ships no 32-bit target. EngineManager.doStart already fails with a clear
+  "needs 64-bit Android" message.
+- REVIEW FINDINGS (open, priority order):
+  P0-1 ChatFragment session filter treats sessionId==null as "accept every
+  event" (handleEvent/handlePart/handlePartDelta): pressing New chat mid-turn
+  leaks the old turn's parts into the empty chat.
+  P0-2 zyvo-adb bridge is dead: the script reads $HOME/.zyvo-adb-token
+  (EngineManager.writeAdbBridge) but the token is only ever written to
+  filesDir/adb_bridge_token (AdbBridgeServer) - token never matches.
+  P0-3 ApiClient.http() sets readTimeout(0) for ALL calls; one hung REST call
+  blocks the single-thread `io` executor (send/replay/drawer/abort) forever.
+  P0-4 session.idle guard can strand a turn that ends on a tool
+  (lastWasTool stays true) -> busy stays on until Stop.
+  P0-5 repo is PUBLIC and the lane key is baked into BuildConfig -> anyone can
+  download the APK and extract ZYVO_OPENCODE_KEY.
+  P1: regenerate appends a duplicate user prompt instead of rewinding; replay
+  can race live events (loadMessages clears items after they arrived); queue
+  holds only one message; engine.log opened+closed per line; PARTIAL_WAKE_LOCK
+  held with no timeout; Prefs.onboardingDone/systemPrompt/gatewayKey/
+  serverPassword have no UI; README is stock Termux; no ZYVO app icon; stock
+  Termux workflows (Build / Unit tests / Dependency submission) run and fail on
+  every push; debug-signed APK; no tests or lint gate; x86_64 engine never
+  device-tested (no emulator smoke job).
+- Remaining 40% (product shell): own Settings screen (model/key/system prompt/
+  server password/ADB/logs/about), first-run onboarding, true regenerate +
+  edit/branch, live model catalog from /config/providers, release signing +
+  versionCode bump, per-ABI default downloads, docs/screenshots.
+
+## 2026-11-16 - locked UI pass (user-approved decisions)
+- Fix P0-1..P0-4 (P0-5 public-key SKIPPED by user). Then UI:
+- Tool card = Codex-style code card: header (tool icon + language label +
+  copy button ONLY, no play) + mono body. DEFAULT COLLAPSED for every status
+  incl. running (spinner in header, body closed); tap cycle closed -> 10 lines
+  -> full -> closed.
+- Line numbers ONLY on write/edit bodies (green gutter, numbered). Run command
+  and read output = plain mono, NO gutter.
+- Diff: +N -N moved AFTER the file name; body = line-number gutter + full-width
+  row wash (green #1E3B26 / red #3A2225) + syntax-colored code.
+- Group header replaces the "Explore · N files" card: one collapsible header
+  per tool batch with live counts "Explored N items · Ran N commands · Changed
+  N files", default expanded; item_summary.xml restyled (14dp icon, 13sp
+  #B4B7BD text, chevron). Only non-zero categories are shown; tapping the
+  header hides its tool rows (GONE) and flips the chevron; a new assistant
+  text/thought closes the batch and the next tool starts a fresh header.
+- Home: minimalist Z logo (Desktop\MouseWithoutBorders\minimalist-app-icon-logo.jpg)
+  as watermark on the empty/new-chat screen, width 72%, alpha 0.12.
+- Launcher icon: replace stock Termux icon with the ZYVO logo (adaptive +
+  legacy PNG set + roundIcon).
+- Thought row: "Thought · 4s" gray, no bold "for". Inline code chip #1A1A1A bg /
+  #C9CDD3 text. Tokens: bg #0F0F10, card #17181A, line #262626, text #ECECEC /
+  #9A9CA3 / #6B7075.

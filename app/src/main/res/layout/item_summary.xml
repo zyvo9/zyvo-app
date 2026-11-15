@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Run-group header: one collapsible line per working batch,
+     e.g. "Explored 2 items · Ran 1 command · Changed 1 file". -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/summary_row"
     android:layout_width="match_parent"
@@ -7,35 +9,38 @@
     android:focusable="true"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="13dp"
-    android:paddingEnd="13dp"
-    android:paddingTop="7dp"
-    android:paddingBottom="5dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="6dp">
 
     <ImageView
         android:id="@+id/summary_icon"
-        android:layout_width="13dp"
-        android:layout_height="13dp"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
         android:contentDescription="@null"
-        android:src="@drawable/ic_lc_search"
-        android:tint="@color/text_secondary" />
-
-    <ImageView
-        android:id="@+id/summary_chevron"
-        android:layout_width="13dp"
-        android:layout_height="13dp"
-        android:layout_marginStart="5dp"
-        android:contentDescription="@null"
-        android:src="@drawable/ic_chevron_down"
+        android:src="@drawable/ic_lc_folder_search"
         android:tint="@color/text_secondary" />
 
     <TextView
         android:id="@+id/summary_text"
-        android:layout_width="wrap_content"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="5dp"
-        android:text="Worked for 3m 40s"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="Worked"
         android:textColor="@color/text_secondary"
-        android:textSize="12sp" />
+        android:textSize="13sp" />
+
+    <ImageView
+        android:id="@+id/summary_chevron"
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_marginStart="6dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_lc_chevron_down"
+        android:tint="@color/text_disabled" />
 
 </LinearLayout>

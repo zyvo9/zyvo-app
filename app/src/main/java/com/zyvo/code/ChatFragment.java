@@ -86,7 +86,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private EventSource sse;
     private EventSource sseStartedFrom;
-    private String sessionId;
+    /** Session whose events the transcript accepts. Written on io, read on the
+     *  SSE thread — volatile. null = brand-new chat: accept NOTHING, otherwise
+     *  the previous turn's parts leak into the empty screen (P0-1). */
+    private volatile String sessionId;
     private boolean busy;
     /** Stop was pressed; the strip reads "Stopping…" until session.idle. */
     private boolean stopping;
@@ -237,12 +240,24 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     private final java.util.HashMap<String, String> partTypes = new java.util.HashMap<>();
     // deltas that arrived before the part announced its type
     private final java.util.HashMap<String, StringBuilder> pendingDeltas = new java.util.HashMap<>();
-    // Explore card (SS-29): consecutive read-only rows fold into one collapsible
-    // card while the agent scouts; it collapses the moment real work begins.
-    private ChatItem exploreCard;
-    private int exploreGroupId;
-    private int exploreFiles;
+    // Run group: every tool row (and the thinking that led to it) of the current
+    // working batch folds under ONE collapsible header with live counts.
+    private ChatItem batchCard;
+    private int batchExplore;
+    private int batchRun;
+    private int batchChanged;
     private int groupSeq;
+    /** session.idle can fire between agent steps — settle only after silence. */
+    private long idleAtMs;
+    private final Runnable idleSettle = new Runnable() {
+        @Override
+        public void run() {
+            if (!busy || stopping) return;
+            if (hasRunningTool()) return;
+            if (lastSignalMs > idleAtMs) return; // more work arrived after the idle
+            finishTurn();
+        }
+    };
     // thought rows that got new tokens; flushed at most every 60 ms
     private final java.util.LinkedHashSet<ChatItem> dirtyThoughts = new java.util.LinkedHashSet<>();
     private boolean thoughtScheduled;
@@ -1075,6 +1090,14 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         }
     }
 
+    /** True only for events that belong to the open session. A brand-new chat
+     *  (sessionId == null) accepts nothing, so the previous turn's parts can
+     *  never leak into the empty transcript (P0-1). */
+    private boolean mine(String sid) {
+        String cur = sessionId;
+        return cur != null && (TextUtils.isEmpty(sid) || cur.equals(sid));
+    }
+
     private void handleEvent(JsonObject event) {
         try {
             String type = str(event, "type");
@@ -1106,7 +1129,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     }
                 }
                 String evSid = str(info, "sessionID");
-                if (sessionId == null || evSid.isEmpty() || sessionId.equals(evSid)) {
+                if (mine(evSid)) {
                     lastSignalMs = System.currentTimeMillis();
                     if (info.has("error") && !info.get("error").isJsonNull()) {
                         JsonElement el = info.get("error");
@@ -1116,7 +1139,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 }
             } else if ("session.status".equals(type)) {
                 String sid = str(props, "sessionID");
-                if (sessionId == null || sid.isEmpty() || sessionId.equals(sid)) {
+                if (mine(sid)) {
                     JsonObject status = props.has("status") && props.get("status").isJsonObject()
                             ? props.getAsJsonObject("status") : null;
                     String st = status == null ? "" : str(status, "type");
@@ -1142,7 +1165,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 }
             } else if ("session.error".equals(type)) {
                 String sid = str(props, "sessionID");
-                if (sessionId == null || sid.isEmpty() || sessionId.equals(sid)) {
+                if (mine(sid)) {
                     JsonElement el = props.has("error") ? props.get("error") : props;
                     String err = errorText(el);
                     if (err.isEmpty()) err = errorText(props);
@@ -1159,17 +1182,20 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     }
                 }
             } else if ("session.idle".equals(type)) {
+                if (!mine(str(props, "sessionID"))) return;
                 lastSignalMs = System.currentTimeMillis();
-                // Some engine versions emit idle between agent steps while a tool is
-                // still running — that is NOT the end of the turn. Wait for the real
-                // idle (the one after the last assistant message completes).
-                if (!stopping && busy
-                        && (!lastAssistantDone || lastWasTool || hasRunningTool())) {
-                    // transient idle between agent steps (tool done, thinking
-                    // next) — NOT the end of the turn
+                if (stopping) {
+                    finishTurn();
                     return;
                 }
-                finishTurn();
+                if (!busy) return;
+                if (hasRunningTool()) return; // a tool is mid-run: not the end
+                // The engine also emits idle between agent steps. Wait one beat:
+                // if nothing new arrives and no tool is running, the turn is over
+                // (P0-4: a turn that ENDS on a tool used to strand busy forever).
+                idleAtMs = lastSignalMs;
+                ui.removeCallbacks(idleSettle);
+                ui.postDelayed(idleSettle, 900);
             }
         } catch (Throwable t) {
             // never let a malformed event kill the stream
@@ -1178,7 +1204,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private void handlePart(JsonObject part) {
         String sid = str(part, "sessionID");
-        if (sessionId != null && !sid.isEmpty() && !sessionId.equals(sid)) return;
+        if (!mine(sid)) return;
         lastSignalMs = System.currentTimeMillis();
 
         String pid = str(part, "id");
@@ -1192,7 +1218,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             String text = str(part, "text");
             if (TextUtils.isEmpty(text)) return;
             clearRetryNotice();
-            closeExplore();
+            closeBatch();
             String mid = str(part, "messageID");
             if (messageRoles.get(mid) == null && sentTexts.contains(normalize(text))) {
                 messageRoles.put(mid, "user");
@@ -1258,37 +1284,28 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 addItem(item);
             }
 
-            // ---- Explore card (SS-29): consecutive read-only rows fold into one
-            // collapsible card; real work (write/edit) or a reply closes it.
-            if (isExploreTool(toolName, cmd)) {
-                if (exploreCard == null) {
+            // ---- Run group: the first tool of a working batch opens ONE
+            // collapsible header; every tool row (and the thinking that led to
+            // it) joins that group until the assistant replies.
+            if (item.group == 0) {
+                if (batchCard == null) {
                     int idx = items.indexOf(item);
-                    int prev = idx - 1;
-                    while (prev >= 0 && items.get(prev).kind == ChatItem.THOUGHT) prev--;
-                    if (prev >= 0 && items.get(prev).kind == ChatItem.TOOL
-                            && items.get(prev).group == 0
-                            && isExploreTool(items.get(prev).toolName, items.get(prev).command)) {
-                        exploreGroupId = ++groupSeq;
-                        ChatItem card = ChatItem.summary(exploreGroupId);
-                        card.expanded = true;
-                        card.text = "Explore · 2 files";
-                        items.add(prev, card);
-                        byKey.put(card.key, card);
-                        adapter.notifyItemInserted(prev);
-                        items.get(prev + 1).group = exploreGroupId;
-                        adapter.notifyItemChanged(prev + 1);
-                        exploreCard = card;
-                        exploreFiles = 2;
+                    int at = idx;
+                    while (at > 0 && items.get(at - 1).kind == ChatItem.THOUGHT
+                            && items.get(at - 1).group == 0) at--;
+                    batchCard = ChatItem.summary(++groupSeq);
+                    batchCard.expanded = true;
+                    items.add(at, batchCard);
+                    byKey.put(batchCard.key, batchCard);
+                    for (int p = at + 1; p < items.size(); p++) {
+                        ChatItem c = items.get(p);
+                        if (c.kind == ChatItem.THOUGHT && c.group == 0) c.group = batchCard.group;
                     }
-                } else {
-                    item.group = exploreGroupId;
-                    exploreFiles++;
-                    exploreCard.text = "Explore · " + exploreFiles + " files";
-                    int ci = items.indexOf(exploreCard);
-                    if (ci >= 0) adapter.notifyItemChanged(ci);
+                    adapter.notifyItemInserted(at);
                 }
-            } else if (exploreCard != null) {
-                closeExplore();
+                item.group = batchCard.group;
+                countTool(item);
+                updateBatchHeader();
             }
 
             item.toolName = toolName;
@@ -1351,6 +1368,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.expanded = false;
                 item.streaming = true;
                 item.startMs = System.currentTimeMillis();
+                if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
                 removeWorking();
             }
@@ -1378,7 +1396,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** One streamed chunk of reasoning or answer text. */
     private void handlePartDelta(JsonObject props) {
         String sid = str(props, "sessionID");
-        if (sessionId != null && !sid.isEmpty() && !sessionId.equals(sid)) return;
+        if (!mine(sid)) return;
         String pid = str(props, "partID");
         if (TextUtils.isEmpty(pid)) return;
         if (!"text".equals(str(props, "field"))) return;
@@ -1405,6 +1423,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.expanded = false;
                 item.streaming = true;
                 item.startMs = System.currentTimeMillis();
+                if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
                 removeWorking();
             } else if ("text".equals(ptype)) {
@@ -1506,23 +1525,57 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         return false;
     }
 
-    /** The scouting phase is over: collapse the Explore card, let the real work show. */
-    private void closeExplore() {
-        if (exploreCard == null) return;
-        exploreCard.expanded = false;
-        int idx = items.indexOf(exploreCard);
-        if (idx >= 0) {
-            adapter.notifyItemChanged(idx);
-            int p = idx + 1;
-            while (p < items.size()) {
-                ChatItem c = items.get(p);
-                if (c.kind != ChatItem.TOOL || c.group != exploreCard.group) break;
-                adapter.notifyItemChanged(p);
-                p++;
-            }
+    /** The batch is over: collapse its header so the transcript stays scannable. */
+    private void closeBatch() {
+        if (batchCard == null) return;
+        ChatItem card = batchCard;
+        batchCard = null;
+        batchExplore = 0;
+        batchRun = 0;
+        batchChanged = 0;
+        card.expanded = false;
+        int idx = items.indexOf(card);
+        if (idx < 0) return;
+        adapter.notifyItemChanged(idx);
+        for (int p = idx + 1; p < items.size(); p++) {
+            ChatItem c = items.get(p);
+            if (c.group != card.group) break;
+            adapter.notifyItemChanged(p);
         }
-        exploreCard = null;
-        exploreGroupId = 0;
+    }
+
+    /** Counts one tool into the live group header (called once per tool row). */
+    private void countTool(ChatItem item) {
+        String n = item.toolName == null ? "" : item.toolName.toLowerCase(Locale.ROOT);
+        if (n.contains("write") || n.contains("edit") || n.contains("patch")) {
+            batchChanged++;
+        } else if (isExploreTool(item.toolName, item.command)) {
+            batchExplore++;
+        } else {
+            batchRun++;
+        }
+    }
+
+    private void updateBatchHeader() {
+        if (batchCard == null) return;
+        StringBuilder sb = new StringBuilder();
+        if (batchExplore > 0) {
+            sb.append("Explored ").append(batchExplore)
+                    .append(batchExplore == 1 ? " item" : " items");
+        }
+        if (batchRun > 0) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append("Ran ").append(batchRun)
+                    .append(batchRun == 1 ? " command" : " commands");
+        }
+        if (batchChanged > 0) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append("Changed ").append(batchChanged)
+                    .append(batchChanged == 1 ? " file" : " files");
+        }
+        batchCard.text = sb.toString();
+        int idx = items.indexOf(batchCard);
+        if (idx >= 0) adapter.notifyItemChanged(idx);
     }
 
     private static long num(JsonObject o, String key) {
@@ -1549,7 +1602,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         addWorkingRow();
         rememberSent(text);
         banner.setVisibility(View.GONE);
-        closeExplore();
+        closeBatch();
         lastWasTool = false;
         workingStartMs = System.currentTimeMillis();
         turnAssistantKey = null;
@@ -1597,7 +1650,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** The single place where a turn really ends. */
     private void finishTurn() {
         finishThoughts();
-        closeExplore();
+        closeBatch();
         // snap any still-revealing reply in one bind so the turn never ends
         // with plain text lagging behind the finished markdown render
         flushReveal();

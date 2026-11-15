@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Grok-black palette (user choice 1A, reference: Grok app screenshot
-     2026-11-14). Pure black base, white text, amber ONLY on the send button. -->
+<!-- Dark palette (reference screenshots 2026-11-16: near-black base,
+     subtle cards, green/red diff washes, mono inline-code chips). -->
 <resources>
     <!-- base surfaces -->
-    <color name="bg">#151515</color>
-    <color name="bg_alt">#0A0A0A</color>
-    <color name="header">#000000</color>
-    <color name="panel">#1B1B1B</color>
-    <color name="card">#242424</color>
-    <color name="card_alt">#2A2A2A</color>
-    <color name="tool_bg">#1F1F1F</color>
-    <color name="markdown_code">#141414</color>
+    <color name="bg">#0F0F10</color>
+    <color name="bg_alt">#0A0A0B</color>
+    <color name="header">#0F0F10</color>
+    <color name="panel">#17181A</color>
+    <color name="card">#17181A</color>
+    <color name="card_alt">#1F2023</color>
+    <color name="tool_bg">#17181A</color>
+    <color name="markdown_code">#121315</color>
     <color name="surface">#14FFFFFF</color>
     <color name="surface_hover">#1FFFFFFF</color>
     <color name="selected">#1FFFFFFF</color>
 
     <!-- text -->
     <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#9CA3AF</color>
-    <color name="text_disabled">#70757C</color>
+    <color name="text_secondary">#9A9CA3</color>
+    <color name="text_disabled">#6B7075</color>
     <color name="text_faint">#4A4A4A</color>
     <color name="text_inverse">#000000</color>
     <color name="link">#E8A33D</color>
@@ -45,9 +45,9 @@
     <color name="warn_bg">#201810</color>
 
     <!-- chat / code -->
-    <color name="user_bubble">#2A2A2A</color>
-    <color name="code_bg">#1F1F1F</color>
-    <color name="code_text">#FFFFFF</color>
+    <color name="user_bubble">#1C1D20</color>
+    <color name="code_bg">#1A1A1A</color>
+    <color name="code_text">#C9CDD3</color>
     <color name="terminal_bg">#000000</color>
     <color name="terminal_fg">#FFFFFF</color>
     <color name="terminal_cursor">#E8A33D</color>

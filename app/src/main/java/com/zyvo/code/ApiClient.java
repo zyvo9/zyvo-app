@@ -33,6 +33,7 @@ public final class ApiClient {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     private static volatile OkHttpClient shared;
+    private static volatile OkHttpClient stream;
 
     private final String directory;
     private final Prefs prefs;
@@ -42,13 +43,14 @@ public final class ApiClient {
         this.prefs = prefs;
     }
 
+    /** REST calls: bounded read so a wedged server surfaces as an error. */
     public static OkHttpClient http() {
         if (shared == null) {
             synchronized (ApiClient.class) {
                 if (shared == null) {
                     shared = new OkHttpClient.Builder()
                             .connectTimeout(20, TimeUnit.SECONDS)
-                            .readTimeout(0, TimeUnit.MILLISECONDS)   // SSE friendly
+                            .readTimeout(60, TimeUnit.SECONDS)
                             .writeTimeout(30, TimeUnit.SECONDS)
                             .retryOnConnectionFailure(true)
                             .build();
@@ -56,6 +58,23 @@ public final class ApiClient {
             }
         }
         return shared;
+    }
+
+    /** SSE stream: no read timeout, events can be minutes apart. */
+    public static OkHttpClient sse() {
+        if (stream == null) {
+            synchronized (ApiClient.class) {
+                if (stream == null) {
+                    stream = new OkHttpClient.Builder()
+                            .connectTimeout(20, TimeUnit.SECONDS)
+                            .readTimeout(0, TimeUnit.MILLISECONDS)
+                            .writeTimeout(30, TimeUnit.SECONDS)
+                            .retryOnConnectionFailure(true)
+                            .build();
+                }
+            }
+        }
+        return stream;
     }
 
     private Request.Builder req(String path) {
@@ -210,7 +229,7 @@ public final class ApiClient {
                 .get()
                 .build();
 
-        EventSource.Factory factory = EventSources.createFactory(http());
+        EventSource.Factory factory = EventSources.createFactory(sse());
         return factory.newEventSource(request, new EventSourceListener() {
             @Override
             public void onEvent(EventSource es, String id, String type, String data) {
@@ -237,6 +256,6 @@ public final class ApiClient {
     }
 
     public Call rawCall(String path) {
-        return http().newCall(req(path).get().build());
+        return sse().newCall(req(path).get().build());
     }
 }

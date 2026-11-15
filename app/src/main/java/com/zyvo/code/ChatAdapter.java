@@ -429,6 +429,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     private void bindThought(ThoughtVH h, ChatItem item, int position) {
+        boolean collapsed = groupCollapsed(position, item.group);
+        h.itemView.setVisibility(collapsed ? View.GONE : View.VISIBLE);
+        if (collapsed) {
+            h.stopTicker();
+            h.stopShimmer();
+            return;
+        }
         animateIn(h.itemView, item);
         boolean hasTitle = !TextUtils.isEmpty(item.title);
         if (item.streaming) {
@@ -532,7 +539,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             int p = position + 1;
             while (p < items.size()) {
                 ChatItem c = items.get(p);
-                if (c.kind != ChatItem.TOOL || c.group != item.group) break;
+                if (c.group != item.group) break;
+                if (c.kind != ChatItem.TOOL && c.kind != ChatItem.THOUGHT) break;
                 notifyItemChanged(p);
                 p++;
             }
@@ -542,15 +550,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     // ---------------------------------------------------------------- tool
 
     private void bindTool(ToolVH h, ChatItem item, int position) {
-        boolean collapsed = false;
-        for (int p = position - 1; p >= 0; p--) {
-            ChatItem c = items.get(p);
-            if (c.kind == ChatItem.SUMMARY) {
-                if (c.group == item.group) collapsed = !c.expanded;
-                break;
-            }
-            if (c.kind != ChatItem.TOOL) break;
-        }
+        boolean collapsed = groupCollapsed(position, item.group);
         h.itemView.setVisibility(collapsed ? View.GONE : View.VISIBLE);
         if (collapsed) {
             h.stopTicker();
@@ -612,93 +612,113 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             h.diff.setVisibility(View.GONE);
         }
 
-        // Body: WHAT CHANGED, agent-IDE style. Edits show the unified diff with
-        // per-line red/green washes (SS-28); writes show the numbered new file
-        // in a green panel (SS-26); everything else shows the plain output.
-        boolean hasDiffBody = !TextUtils.isEmpty(item.diff);
-        boolean hasContent = !TextUtils.isEmpty(item.content) && !hasDiffBody;
+        // Body: one code card per row (reference agent IDE).
+        //   bash/read -> plain mono, NO gutter
+        //   write     -> numbered green body (1 2 3)
+        //   edit      -> washed line-numbered diff
+        boolean isEdit = tool.contains("edit") || tool.contains("patch");
+        boolean isWrite = !isEdit && tool.contains("write");
         String plainOut = item.output == null ? "" : item.output;
-        boolean hasOutput = hasDiffBody || hasContent || !TextUtils.isEmpty(plainOut);
-        boolean hasCmd = !TextUtils.isEmpty(clean);
-        int total = 0;
-        if (hasDiffBody) total = countLines(item.diff);
-        else if (hasContent) {
-            total = countLines(item.content) + (plainOut.isEmpty() ? 0 : 1 + countLines(plainOut));
-        } else if (!plainOut.isEmpty()) total = countLines(plainOut);
-        boolean open = item.expanded || item.full || failed || running;
-        int maxLines = item.full ? 400 : (item.expanded ? 10 : 3);
-        if (failed && !item.expanded) maxLines = 8;
 
-        boolean showBody = open && (hasCmd || hasOutput || hasDiff);
-        h.body.setVisibility(showBody ? View.VISIBLE : View.GONE);
-        // panel: a write (pure additions) = green box; an edit diff carries its
-        // own per-line washes on the neutral body
-        if (hasContent && add > 0 && del == 0) {
-            h.body.setBackgroundResource(R.drawable.bg_diff_add);
-        } else {
-            h.body.setBackgroundResource(0);
+        CharSequence code = null;
+        String payload = "";
+        boolean greenEdge = false;
+        if (isEdit && !TextUtils.isEmpty(item.diff)) {
+            code = diffSpans(item.diff);
+            payload = item.diff;
+        } else if (isWrite && !TextUtils.isEmpty(item.content)) {
+            code = numberedBody(item.content, plainOut);
+            payload = item.content;
+            greenEdge = true;
+        } else if (!plainOut.isEmpty()) {
+            String shown = running && !item.expanded && !item.full
+                    ? tail(plainOut, 8) : plainOut;
+            code = syntaxBlock(shown);
+            payload = plainOut;
+        } else if (!clean.isEmpty()) {
+            code = syntaxBlock(clean);
+            payload = clean;
         }
 
-        // one card, one body: Terminal rows show ONLY the output on expand (the
-        // command lives in the header title); write/edit show diff/numbered content
-        h.cmdBox.setVisibility(View.GONE);
-        h.cmdOutput.setVisibility(View.GONE);
-        h.expand.setVisibility(View.GONE);
-        h.cmdFullToggle.setVisibility(View.GONE);
-
-        h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
-        if (open && hasDiffBody) {
-            // edit: unified diff body (SS-28), syntax colored
-            h.output.setText(diffSpans(item.diff));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(null);
-        } else if (open && hasContent) {
-            // write: IDE-style numbered content (SS-26 look), syntax colored
-            h.output.setText(numberedBody(item.content,
-                    plainOut.isEmpty() ? "" : plainOut));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(null);
-        } else if (open && !plainOut.isEmpty()) {
-            boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-            h.output.setText(tailMode ? tail(plainOut, maxLines)
-                    : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
-        }
-
-        boolean overflow = total > maxLines;
-        boolean showMeta = open && overflow;
-        h.expandOut.setVisibility(showMeta ? View.VISIBLE : View.GONE);
-        if (showMeta) {
-            h.expandOut.setText(item.full
-                    ? ctx.getString(R.string.tap_collapse)
-                    : ctx.getString(R.string.lines_tap_expand, total));
-        }
-
-        boolean canOpen = hasCmd || hasOutput || hasDiff;
-        h.chevron.setVisibility(canOpen ? View.VISIBLE : View.GONE);
+        // Default MINIMIZED for every status (running included). A failure
+        // auto-opens a short preview so the error is visible without a tap.
+        boolean open = item.expanded || item.full || failed;
+        int maxLines = item.full ? 400 : (item.expanded ? 10 : 8);
+        boolean hasBody = code != null;
+        h.body.setVisibility(open && hasBody ? View.VISIBLE : View.GONE);
+        h.chevron.setVisibility(hasBody ? View.VISIBLE : View.GONE);
         h.chevron.setRotation(open ? 180f : 0f);
 
-        // the unified diff now lives in the main body — the old chip-toggled
-        // second diff box stays off
-        h.diffBody.setVisibility(View.GONE);
-
-        h.diff.setOnClickListener(null);
-        h.diff.setClickable(false);
-
-        h.expand.setOnClickListener(v -> {
-            nextStage(item);
-            notifyItemChanged(position);
-        });
-        h.expandOut.setOnClickListener(v -> {
-            nextStage(item);
-            notifyItemChanged(position);
-        });
+        if (open && hasBody) {
+            h.codeEdge.setVisibility(greenEdge ? View.VISIBLE : View.GONE);
+            h.codeLang.setText(langFor(item));
+            h.codeIcon.setImageResource(iconFor(item.toolName, item.command));
+            h.codeText.setText(item.full ? code : capSpans(code, maxLines));
+            h.codeText.setMaxLines(maxLines);
+            h.codeText.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+            final String copy = payload;
+            h.codeCopy.setOnClickListener(v -> {
+                ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("tool", copy));
+                    UiUtil.toast(ctx, ctx.getString(R.string.copied));
+                }
+            });
+        }
 
         h.card.setOnClickListener(v -> {
             nextStage(item);
             notifyItemChanged(position);
         });
+    }
+
+    /** A tool/thought row is hidden while its run-group header is collapsed. */
+    private boolean groupCollapsed(int position, int group) {
+        if (group == 0) return false;
+        for (int p = position - 1; p >= 0; p--) {
+            ChatItem c = items.get(p);
+            if (c.kind == ChatItem.SUMMARY) {
+                if (c.group == group) return !c.expanded;
+                continue;
+            }
+            if (c.kind != ChatItem.TOOL && c.kind != ChatItem.THOUGHT) break;
+        }
+        return false;
+    }
+
+    /** Cuts a spanned block after {@code maxLines} lines (preview mode). */
+    private static CharSequence capSpans(CharSequence s, int maxLines) {
+        int seen = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\n') {
+                seen++;
+                if (seen >= maxLines) return s.subSequence(0, i);
+            }
+        }
+        return s;
+    }
+
+    /** Code-card header label: Bash / HTML / JAVA / Diff … */
+    private String langFor(ChatItem item) {
+        String n = item.toolName == null ? "" : item.toolName.toLowerCase(Locale.ROOT);
+        if (isShell(item.toolName, item.command)) return "Bash";
+        if (n.contains("web") || n.contains("fetch") || n.contains("http")) return "HTTP";
+        String path = !TextUtils.isEmpty(item.label) ? item.label : item.command;
+        String ext = extOf(path);
+        if (!ext.isEmpty()) return ext.toUpperCase(Locale.ROOT);
+        if (n.contains("edit") || n.contains("patch")) return "Diff";
+        return titleFor(item.toolName, item.command);
+    }
+
+    private static String extOf(String path) {
+        if (path == null) return "";
+        String p = path.trim();
+        int slash = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+        if (slash >= 0) p = p.substring(slash + 1);
+        int dot = p.lastIndexOf('.');
+        if (dot < 0 || dot == p.length() - 1) return "";
+        String ext = p.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return ext.matches("[a-z0-9]{1,5}") ? ext : "";
     }
 
     /** Codex-style verb for the row: "Ran command", "Writing file", ... */
@@ -770,12 +790,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
      *  desktop agent UI. Hunk headers give real new-file line numbers. */
     private CharSequence diffSpans(String diff) {
         android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
-        int colorAdd = ContextCompat.getColor(ctx, R.color.ok);
-        int colorDel = ContextCompat.getColor(ctx, R.color.danger);
         int colorCtx = ContextCompat.getColor(ctx, R.color.text_secondary);
         int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
-        final int bgAdd = 0x66346E3F; // solid green wash (SS-28 look)
-        final int bgDel = 0x66763A3A; // solid red wash
+        final int bgAdd = 0xFF1E3B26; // full-width green wash (reference diff)
+        final int bgDel = 0xFF3A2225; // full-width red wash
         final int numW = 4;
         int lines = 0;
         int fileLine = 1;
@@ -806,8 +824,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             int tstart = sb.length();
             sb.append(text);
-            sb.setSpan(new ForegroundColorSpan(add ? colorAdd : del ? colorDel : colorCtx),
-                    tstart, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (!add && !del) {
+                sb.setSpan(new ForegroundColorSpan(colorCtx), tstart, sb.length(),
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
             if (add || del) {
                 sb.setSpan(new android.text.style.BackgroundColorSpan(add ? bgAdd : bgDel),
                         start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -916,6 +936,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
      *  file, with the tool output trailing in gray (agent-IDE look). */
     private CharSequence numberedBody(String content, String trailing) {
         android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+        int numColor = ContextCompat.getColor(ctx, R.color.ok);
         int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
         String[] lines = content.split("\n", -1);
         int cap = Math.min(lines.length, 400);
@@ -925,7 +946,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             String num = String.valueOf(i + 1);
             for (int p = num.length(); p < numW; p++) sb.append(' ');
             sb.append(num).append("  ");
-            sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
+            sb.setSpan(new ForegroundColorSpan(numColor), start, sb.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             int tstart = sb.length();
             sb.append(lines[i]);
@@ -1394,16 +1415,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final ImageView icon;
         final TextView label;
         final TextView name;
-        final View cmdBox;
-        final TextView cmdLine;
-        final TextView cmdFullToggle;
-        final TextView cmdOutput;
         final TextView diff;
-        final TextView output;
-        final TextView expand;
-        final TextView expandOut;
-        final TextView diffBody;
         final ImageView chevron;
+        final View codeEdge;
+        final ImageView codeIcon;
+        final TextView codeLang;
+        final ImageButton codeCopy;
+        final TextView codeText;
 
         ToolVH(@NonNull View v) {
             super(v);
@@ -1413,16 +1431,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             icon = v.findViewById(R.id.tool_icon);
             label = v.findViewById(R.id.tool_label);
             name = v.findViewById(R.id.tool_name);
-            cmdBox = v.findViewById(R.id.cmd_box);
-            cmdLine = v.findViewById(R.id.cmd_line);
-            cmdFullToggle = v.findViewById(R.id.cmd_full_toggle);
-            cmdOutput = v.findViewById(R.id.cmd_output);
             diff = v.findViewById(R.id.diff);
-            output = v.findViewById(R.id.output);
-            expand = v.findViewById(R.id.expand);
-            expandOut = v.findViewById(R.id.expand_out);
-            diffBody = v.findViewById(R.id.diff_body);
             chevron = v.findViewById(R.id.chevron);
+            codeEdge = v.findViewById(R.id.code_edge);
+            codeIcon = v.findViewById(R.id.code_icon);
+            codeLang = v.findViewById(R.id.code_lang);
+            codeCopy = v.findViewById(R.id.code_copy);
+            codeText = v.findViewById(R.id.code_text);
             spinner.setText(ChatAdapter.FRAMES[0]);
         }
 

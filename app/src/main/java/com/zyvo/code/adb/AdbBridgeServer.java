@@ -64,7 +64,11 @@ public final class AdbBridgeServer {
 
     private static String loadOrCreateToken(Context ctx) {
         try {
-            File f = new File(ctx.getFilesDir(), "adb_bridge_token");
+            // Single source of truth: the script the engine runs reads
+            // "$HOME/.zyvo-adb-token", and HOME is files/home.
+            File home = new File(ctx.getFilesDir(), "home");
+            if (!home.exists()) home.mkdirs();
+            File f = new File(home, ".zyvo-adb-token");
             if (f.exists() && f.length() > 0) {
                 byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
                 return new String(b, StandardCharsets.UTF_8).trim();
@@ -76,6 +80,9 @@ public final class AdbBridgeServer {
             java.io.FileOutputStream os = new java.io.FileOutputStream(f);
             os.write(tok.getBytes(StandardCharsets.UTF_8));
             os.close();
+            try {
+                java.lang.Runtime.getRuntime().exec(new String[]{"chmod", "600", f.getAbsolutePath()}).waitFor();
+            } catch (Throwable ignored) {}
             return tok;
         } catch (Throwable t) {
             return "zyvo-local";
