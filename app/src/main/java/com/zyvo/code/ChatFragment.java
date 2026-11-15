@@ -2446,7 +2446,20 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             if (lm == null) return;
             int lastPos = adapter.getItemCount() - 1;
             View last = lm.findViewByPosition(lastPos);
-            if (last == null) return; // not laid out yet; next tick catches it
+            if (last == null) {
+                // scrolled far away — the last row isn't laid out yet: jump to
+                // its position, then finish the job once it is on screen
+                rv.scrollToPosition(lastPos);
+                rv.postOnAnimation(() -> {
+                    View v2 = lm.findViewByPosition(adapter.getItemCount() - 1);
+                    if (v2 != null) {
+                        int dy2 = v2.getBottom() - (rv.getHeight() - rv.getPaddingBottom());
+                        if (dy2 > 0) rv.scrollBy(0, dy2);
+                    }
+                    updatePinned();
+                });
+                return;
+            }
             int dy = last.getBottom() - (rv.getHeight() - rv.getPaddingBottom());
             if (dy > 0) rv.scrollBy(0, dy);
             updatePinned();
