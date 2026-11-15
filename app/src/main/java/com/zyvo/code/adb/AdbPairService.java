@@ -116,34 +116,59 @@ public class AdbPairService extends Service {
         update(this, "Pairing… keep the pairing screen open");
         new Thread(() -> {
             try {
-                // 1) the pairing port is only advertised while the system pairing
-                //    dialog is open — retry mDNS for up to ~15 s
-                int pairPort = -1;
-                for (int t = 0; t < 5 && pairPort <= 0; t++) {
-                    pairPort = AdbShellController.findPairPort(this);
-                    if (pairPort <= 0) Thread.sleep(1200);
+                // DEMO RACE STYLE: mDNS port (one attempt, concurrent) + loopback
+                // TLS scan — every candidate pairs in parallel (8 threads, first
+                // success wins instantly). No serial retries.
+                final java.util.LinkedHashSet<Integer> candidates = new java.util.LinkedHashSet<>();
+                final java.util.concurrent.CountDownLatch mdnsDone = new java.util.concurrent.CountDownLatch(1);
+                final java.util.concurrent.atomic.AtomicInteger mdnsPort = new java.util.concurrent.atomic.AtomicInteger(-1);
+                Thread mdns = new Thread(() -> {
+                    try {
+                        mdnsPort.set(AdbShellController.findPairPort(this));
+                    } catch (Throwable ignored) {
+                    } finally {
+                        mdnsDone.countDown();
+                    }
+                });
+                mdns.start();
+                java.util.List<Integer> scanned = AdbShellController.scanPairPorts();
+                candidates.addAll(scanned);
+                mdnsDone.await(6, java.util.concurrent.TimeUnit.SECONDS);
+                if (mdnsPort.get() > 0) candidates.add(mdnsPort.get());
+                final int nPorts = candidates.size();
+                update(this, "Pairing… trying " + nPorts + " port(s)");
+
+                java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                        Math.min(8, Math.max(2, nPorts)));
+                final java.util.concurrent.atomic.AtomicReference<AdbPairClient.Result> winner =
+                        new java.util.concurrent.atomic.AtomicReference<>();
+                final java.util.concurrent.CountDownLatch win = new java.util.concurrent.CountDownLatch(1);
+                for (final int p : candidates) {
+                    pool.execute(() -> {
+                        if (winner.get() != null) return;
+                        try {
+                            String host = AdbShellController.pairHostFor(p);
+                            if (host == null) host = "127.0.0.1";
+                            AdbPairClient.Result r = AdbPairClient.pair(host, p, code);
+                            if (r.ok && winner.compareAndSet(null, r)) win.countDown();
+                        } catch (Throwable ignored) {
+                        }
+                    });
                 }
-                if (pairPort <= 0) {
-                    update(this, "Open \"Pair device with pairing code\" first, then type the code again");
-                    pairing = false;
-                    return;
-                }
-                // 2) pair against loopback (IPv4 + IPv6 handled inside)
-                AdbPairClient.Result r = AdbPairClient.pair("127.0.0.1", pairPort, code);
-                if (!r.ok) {
-                    update(this, "Pair failed: " + r.message);
+                win.await(20, java.util.concurrent.TimeUnit.SECONDS);
+                pool.shutdownNow();
+                AdbPairClient.Result rr = winner.get();
+                if (rr == null || !rr.ok) {
+                    update(this, "Pair failed — reload the pairing screen (port rotates) and type the new code");
                     pairing = false;
                     return;
                 }
                 PairState.markPaired(this);
-                update(this, "Paired ✓ — finding the connect port…");
-                // 3) connect port auto-discovery (mDNS + probe + cache)
+                update(this, "Paired ✓ — connecting…");
                 boolean up = AdbShellController.ensureConnected();
-                if (!up) Thread.sleep(1500); // one patient retry
-                if (!up) up = AdbShellController.ensureConnected();
                 update(this, up
                         ? "Connected ✓ — the AI shell can run adb commands"
-                        : "Paired ✓ — connect failed: keep Wireless debugging ON, then tap Pair & connect in the app dialog");
+                        : "Paired ✓ — connect failed: keep Wireless debugging ON and retry the code");
             } catch (Throwable t) {
                 update(this, "Pair failed: " + (t.getMessage() != null ? t.getMessage() : t.toString()));
             } finally {
