@@ -72,8 +72,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private EditText input;
     private ImageButton send;
-    private View tabUnderline;
-    private View tabRow;
     private View emptyView;
     private ProgressBar loadingView;
     private View banner;
@@ -481,27 +479,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
         v.findViewById(R.id.btn_new).setOnClickListener(view -> newSession());
         v.findViewById(R.id.btn_sessions).setOnClickListener(view -> openSessionsDrawer());
-
-        // top tabs (Grok-style): Chat / Terminal / Settings
-        View tabChat = v.findViewById(R.id.tab_chat);
-        tabRow = v.findViewById(R.id.tab_row);
-        tabUnderline = v.findViewById(R.id.tab_underline);
-        if (tabChat != null) tabChat.setOnClickListener(view -> {
-            moveUnderline(view, true);
-            pinnedToBottom = true;
-            scrollToBottom();
-        });
-        View tabTerminal = v.findViewById(R.id.tab_terminal);
-        if (tabTerminal != null) tabTerminal.setOnClickListener(view -> {
-            moveUnderline(view, true);
-            openTerminal();
-        });
-        View tabSettings = v.findViewById(R.id.tab_settings);
-        if (tabSettings != null) tabSettings.setOnClickListener(view -> {
-            moveUnderline(view, true);
-            openSettings();
-        });
-        if (tabChat != null) moveUnderline(tabChat, false);
 
         // send button: tiny press feedback (Grok keeps the composer calm)
         if (send != null) send.setOnTouchListener((view, ev) -> {
@@ -2371,21 +2348,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     /** One underline, sliding under the tab that was tapped. */
-    private void moveUnderline(View tab, boolean animate) {
-        if (tabUnderline == null || tabRow == null || tab == null) return;
-        tabRow.post(() -> {
-            if (tabUnderline == null || tab.getWidth() == 0) return;
-            float x = tab.getLeft() + (tab.getWidth() - tabUnderline.getWidth()) / 2f;
-            if (animate && animationsOn()) {
-                tabUnderline.animate().translationX(x).setDuration(220)
-                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
-                        .start();
-            } else {
-                tabUnderline.setTranslationX(x);
-            }
-        });
-    }
-
     private boolean animationsOn() {
         if (getContext() == null) return false;
         return android.provider.Settings.Global.getFloat(getContext().getContentResolver(),

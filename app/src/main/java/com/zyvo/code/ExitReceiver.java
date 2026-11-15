@@ -21,10 +21,7 @@ public class ExitReceiver extends BroadcastReceiver {
         try { ctx.stopService(new Intent(ctx, AdbPairService.class)); } catch (Throwable ignored) {}
         try {
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) {
-                nm.cancel(ZyvoNotif.ID);
-                nm.cancel(TermuxConstants.TERMUX_APP_NOTIFICATION_ID);
-            }
+            if (nm != null) nm.cancelAll();
         } catch (Throwable ignored) {}
         // let the stops land, then hard-kill the process (force stop)
         new Thread(() -> {
