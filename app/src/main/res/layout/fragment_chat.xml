@@ -117,7 +117,8 @@
                 android:text="@string/empty_chat_title"
                 android:textColor="@color/text_primary"
                 android:textSize="26sp"
-                android:textStyle="bold" />
+                android:textStyle="bold" 
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/empty_hint"
@@ -128,7 +129,8 @@
                 android:gravity="center"
                 android:text="@string/empty_chat_hint"
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="14sp" 
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/chip1"
@@ -143,7 +145,8 @@
                 android:paddingBottom="14dp"
                 android:text="What files are on my phone?"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:textSize="14sp" 
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/chip2"
@@ -158,7 +161,8 @@
                 android:paddingBottom="14dp"
                 android:text="List my Downloads folder"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:textSize="14sp" 
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/chip3"
@@ -173,7 +177,8 @@
                 android:paddingBottom="14dp"
                 android:text="How much storage is free?"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:textSize="14sp" 
+                android:visibility="gone" />
         </LinearLayout>
 
         <ProgressBar
