@@ -228,6 +228,47 @@ public final class EngineManager {
     }
 
     /** Extra operator instructions the user typed in Settings. */
+    /** Installs the zyvo brand banner + prompt into the Termux prefix. Runs on
+     *  every start so a fresh bootstrap never wipes it; interactive shells only
+     *  (the AI's own bash calls stay banner-free). */
+    public void writeTermuxBrand() {
+        try {
+            File prefix = new File(rootDir, "usr");
+            File pd = new File(prefix, "etc/profile.d");
+            if (!pd.exists() && !pd.mkdirs()) return;
+            StringBuilder sb = new StringBuilder();
+            sb.append("case $- in *i*) ;; *) return ;; esac\n");
+            sb.append("IP=$(ip -4 addr show wlan0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1)\n");
+            sb.append("[ -z \"$IP\" ] && IP=offline\n");
+            sb.append("AV=$(getprop ro.build.version.release 2>/dev/null); [ -z \"$AV\" ] && AV=?\n");
+            sb.append("T=$(awk '/MemTotal:/{print $2}' /proc/meminfo 2>/dev/null)\n");
+            sb.append("A=$(awk '/MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null)\n");
+            sb.append("[ -z \"$T\" ] && T=0; [ -z \"$A\" ] && A=0\n");
+            sb.append("U=$((T - A))\n");
+            sb.append("RAM=$(awk -v u=$U -v t=$T 'BEGIN{printf \"%.1fGi/%.1fGi\", u/1048576, t/1048576}')\n");
+            sb.append("printf '\\n'\n");
+            sb.append("printf '\\033[1;37m█████████  ██▄   ▄██  ██▄   ▄██   ▄█████▄\\n'\n");
+            sb.append("printf '      ███▀   ▀██▄██▀   ███   ███  ███   ███\\n'\n");
+            sb.append("printf '    ▄██▀       ███     ▀██▄ ▄██▀  ███   ███\\n'\n");
+            sb.append("printf '  ▄██▀         ███      ▀█████▀   ███   ███\\n'\n");
+            sb.append("printf '█████████     ███        ▀█▀      ▀█████▀\\033[0m\\n'\n");
+            sb.append("printf '\\033[90m──────────────────────────────────────────\\033[0m\\n'\n");
+            sb.append("printf '\\033[32m●\\033[0m ZYVO OS   │  IP: %s\\n' \"$IP\"\n");
+            sb.append("printf '\\033[32m●\\033[0m Android %s │  RAM: %s\\n' \"$AV\" \"$RAM\"\n");
+            sb.append("printf '\\033[90m──────────────────────────────────────────\\033[0m\\n\\n'\n");
+            sb.append("PS1='\\[\\033[1;32m\\]zyvo@termux\\[\\033[0m\\] ❯ '\n");
+            try (OutputStream os = new FileOutputStream(new File(pd, "zyvo-banner.sh"))) {
+                os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            // the stock Termux welcome would print under ours — silence it
+            try (OutputStream os = new FileOutputStream(new File(prefix, "etc/motd"))) {
+                os.write(new byte[0]);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "termux brand banner failed: " + t.getMessage());
+        }
+    }
+
     public void writeAgentsInstructions() throws IOException {
         String prompt = new Prefs(app).systemPrompt();
         // App-UI rules ride along in AGENTS.md for every session: the chat UI
@@ -418,6 +459,7 @@ public final class EngineManager {
         }
         setState(State.STARTING, "preparing files");
         ensureDirs();
+        writeTermuxBrand();
 
         // A previous instance may still be serving (app restart, service alive).
         if (probeHealth()) {
