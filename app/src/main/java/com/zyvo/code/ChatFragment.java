@@ -485,8 +485,8 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         // voice input: system speech recognizer fills the composer
         View voiceBtn = v.findViewById(R.id.btn_voice);
         if (voiceBtn != null) voiceBtn.setOnClickListener(view -> {
-            android.content.Intent i = new android.speech.RecognizerIntent
-                    .Intent(RecognizerIntent_ACTION());
+            android.content.Intent i = new android.content.Intent(
+                    android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                     android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
@@ -2539,6 +2539,38 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     /** Drops the "Working." row once a real part (thinking, tool, text) arrives. */
+    /** Long task finished while the screen is off / app in background: say so. */
+    private void notifyTaskDoneIfQuiet() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) requireContext()
+                    .getSystemService(Context.POWER_SERVICE);
+            boolean screenOn = pm != null && pm.isInteractive();
+            android.app.ActivityManager.RunningAppProcessInfo inf =
+                    new android.app.ActivityManager.RunningAppProcessInfo();
+            android.app.ActivityManager.getMyMemoryState(inf);
+            boolean inBg = inf.importance >= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_BACKGROUND;
+            if (screenOn && !inBg) return;
+            ChatItem ci = byKey.get(turnAssistantKey);
+            if (ci == null || TextUtils.isEmpty(ci.text)) return;
+            String line = firstReplyLine(ci.text);
+            if (TextUtils.isEmpty(line)) return;
+            ZyvoNotif.notifyTaskDone(requireContext(), line);
+        } catch (Throwable ignored) {}
+    }
+
+    private static String firstReplyLine(String text) {
+        for (String l : text.split("
+")) {
+            String t = l.trim();
+            if (t.isEmpty()) continue;
+            if (t.startsWith("#")) t = t.replaceFirst("^#+\s*", "");
+            t = t.replace("*", "");
+            if (t.length() > 90) t = t.substring(0, 89) + "…";
+            return t;
+        }
+        return "";
+    }
+
     private void removeWorking() {
         for (int i = 0; i < items.size(); i++) {
             if (items.get(i).kind == ChatItem.WORKING) {

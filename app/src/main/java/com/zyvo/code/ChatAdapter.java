@@ -421,6 +421,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private void bindWorking(WorkingVH h, ChatItem item) {
         animateIn(h.itemView, item);
         h.startMs = item.startMs > 0 ? item.startMs : System.currentTimeMillis();
+        h.baseLabel = ctx.getString(R.string.working_bar);
         h.spin.setText(ChatAdapter.FRAMES[0]);
         h.text.setText(TextUtils.isEmpty(item.text)
                 ? ctx.getString(R.string.working) : item.text);
@@ -1225,11 +1226,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
 
         @Override
+        String baseLabel = "Working";
+
         void onFrame(String frame) {
             spin.setText(frame);
             if (startMs > 0) {
                 long sec = Math.max(1, (System.currentTimeMillis() - startMs) / 1000);
-                text.setText(ctx.getString(R.string.working_bar) + " · " + sec + "s");
+                text.setText(baseLabel + " · " + sec + "s");
             }
         }
     }
