@@ -2371,6 +2371,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         if (pinnedToBottom) scrollToBottomAnimated();
     }
 
+    /** Sets the in-list Working row's label (e.g. "Stopping…"). */
+    private void setWorkingRowText(String t) {
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).kind == ChatItem.WORKING) {
+                items.get(i).text = t;
+                adapter.notifyItemChanged(i);
+                return;
+            }
+        }
+    }
+
     /** Adds (or moves to the end) the in-list live Working row. */
     private void addWorkingRow() {
         for (int i = 0; i < items.size(); i++) {
