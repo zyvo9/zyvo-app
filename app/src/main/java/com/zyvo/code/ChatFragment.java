@@ -2559,11 +2559,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     private static String firstReplyLine(String text) {
-        for (String l : text.split("
-")) {
+        for (String l : text.split("\n")) {
             String t = l.trim();
             if (t.isEmpty()) continue;
-            if (t.startsWith("#")) t = t.replaceFirst("^#+\s*", "");
+            if (t.startsWith("#")) t = t.replaceFirst("^#+\\s*", "");
             t = t.replace("*", "");
             if (t.length() > 90) t = t.substring(0, 89) + "…";
             return t;
