@@ -639,79 +639,40 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             h.body.setBackgroundResource(0);
         }
 
-        String tl = item.toolName == null ? "" : item.toolName.toLowerCase(Locale.ROOT);
-        boolean bashRow = tl.contains("bash") || tl.contains("shell") || tl.contains("exec")
-                || tl.contains("terminal") || tl.contains("cmd");
+        // one card, one body: Terminal rows show ONLY the output on expand (the
+        // command lives in the header title); write/edit show diff/numbered content
+        h.cmdBox.setVisibility(View.GONE);
+        h.cmdOutput.setVisibility(View.GONE);
+        h.expand.setVisibility(View.GONE);
+        h.cmdFullToggle.setVisibility(View.GONE);
 
-        if (bashRow) {
-            // SS-30 command box: $ command + show-full toggle + output inside
-            h.cmdBox.setVisibility(open && hasCmd ? View.VISIBLE : View.GONE);
-            h.output.setVisibility(View.GONE);
-            h.expandOut.setVisibility(View.GONE);
-            h.expand.setVisibility(View.GONE);
-            if (open && hasCmd) {
-                boolean longCmd = clean.length() > 120;
-                String shown = longCmd && !item.cmdExpanded
-                        ? clean.substring(0, 119) + "…" : clean;
-                h.cmdLine.setText(fadedPrefix("$ " + shown));
-                h.cmdFullToggle.setVisibility(longCmd ? View.VISIBLE : View.GONE);
-                h.cmdFullToggle.setText(item.cmdExpanded
-                        ? "Hide full command ⌄" : "Show full command ⌄");
-                h.cmdFullToggle.setOnClickListener(v -> {
-                    item.cmdExpanded = !item.cmdExpanded;
-                    notifyItemChanged(position);
-                });
-                boolean hasOut = !plainOut.isEmpty();
-                h.cmdOutput.setVisibility(open && hasOut ? View.VISIBLE : View.GONE);
-                if (open && hasOut) {
-                    boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-                    h.cmdOutput.setText(tailMode ? tail(plainOut, maxLines)
-                            : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
-                    h.cmdOutput.setMaxLines(maxLines);
-                    h.cmdOutput.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
-                }
-                boolean overflow = total > maxLines;
-                h.expand.setVisibility(open && overflow ? View.VISIBLE : View.GONE);
-                if (overflow) {
-                    h.expand.setText(item.full
-                            ? ctx.getString(R.string.tap_collapse)
-                            : ctx.getString(R.string.lines_tap_expand, total));
-                }
-            }
-        } else {
-            h.cmdBox.setVisibility(View.GONE);
-            h.cmdOutput.setVisibility(View.GONE);
-            h.expand.setVisibility(View.GONE);
-            h.cmdFullToggle.setVisibility(View.GONE);
+        h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
+        if (open && hasDiffBody) {
+            // edit: unified diff body (SS-28), syntax colored
+            h.output.setText(diffSpans(item.diff));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(null);
+        } else if (open && hasContent) {
+            // write: IDE-style numbered content (SS-26 look), syntax colored
+            h.output.setText(numberedBody(item.content,
+                    plainOut.isEmpty() ? "" : plainOut));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(null);
+        } else if (open && !plainOut.isEmpty()) {
+            boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
+            h.output.setText(tailMode ? tail(plainOut, maxLines)
+                    : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
+            h.output.setMaxLines(maxLines);
+            h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+        }
 
-            h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
-            if (open && hasDiffBody) {
-                // edit: unified diff body (SS-28), syntax colored
-                h.output.setText(diffSpans(item.diff));
-                h.output.setMaxLines(maxLines);
-                h.output.setEllipsize(null);
-            } else if (open && hasContent) {
-                // write: IDE-style numbered content (SS-26 look), syntax colored
-                h.output.setText(numberedBody(item.content,
-                        plainOut.isEmpty() ? "" : plainOut));
-                h.output.setMaxLines(maxLines);
-                h.output.setEllipsize(null);
-            } else if (open && !plainOut.isEmpty()) {
-                boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-                h.output.setText(tailMode ? tail(plainOut, maxLines)
-                        : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
-                h.output.setMaxLines(maxLines);
-                h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
-            }
-
-            boolean overflow = total > maxLines;
-            boolean showMeta = open && overflow;
-            h.expandOut.setVisibility(showMeta ? View.VISIBLE : View.GONE);
-            if (showMeta) {
-                h.expandOut.setText(item.full
-                        ? ctx.getString(R.string.tap_collapse)
-                        : ctx.getString(R.string.lines_tap_expand, total));
-            }
+        boolean overflow = total > maxLines;
+        boolean showMeta = open && overflow;
+        h.expandOut.setVisibility(showMeta ? View.VISIBLE : View.GONE);
+        if (showMeta) {
+            h.expandOut.setText(item.full
+                    ? ctx.getString(R.string.tap_collapse)
+                    : ctx.getString(R.string.lines_tap_expand, total));
         }
 
         boolean canOpen = hasCmd || hasOutput || hasDiff;
