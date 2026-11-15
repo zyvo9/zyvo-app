@@ -418,8 +418,12 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     // ------------------------------------------------------------- thought
 
     private void bindWorking(WorkingVH h, ChatItem item) {
+        animateIn(h.itemView, item);
+        h.startMs = item.startMs > 0 ? item.startMs : System.currentTimeMillis();
+        h.spin.setText(ChatAdapter.FRAMES[0]);
         h.text.setText(TextUtils.isEmpty(item.text)
                 ? ctx.getString(R.string.working) : item.text);
+        h.startTicker();
     }
 
     private void bindThought(ThoughtVH h, ChatItem item, int position) {
@@ -1166,12 +1170,24 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
     }
 
-    static final class WorkingVH extends RecyclerView.ViewHolder {
+    static final class WorkingVH extends TickingVH {
+        final TextView spin;
         final TextView text;
+        long startMs;
 
         WorkingVH(@NonNull View v) {
             super(v);
+            spin = v.findViewById(R.id.working_spin);
             text = v.findViewById(R.id.working_text);
+        }
+
+        @Override
+        void onFrame(String frame) {
+            spin.setText(frame);
+            if (startMs > 0) {
+                long sec = Math.max(1, (System.currentTimeMillis() - startMs) / 1000);
+                text.setText(ctx.getString(R.string.working_bar) + " · " + sec + "s");
+            }
         }
     }
 

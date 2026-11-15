@@ -92,6 +92,8 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     private boolean stopping;
     /** Part id of the assistant text being streamed in the current turn. */
     private String turnAssistantKey;
+    /** A tool finished but no output followed yet — transient idle guard. */
+    private boolean lastWasTool;
     /** Newest assistant message has time.completed (real end-of-turn signal). */
     private boolean lastAssistantDone = true;
     /** Last prompt the user sent — the Retry button on notice cards re-sends it. */
@@ -1136,7 +1138,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 // Some engine versions emit idle between agent steps while a tool is
                 // still running — that is NOT the end of the turn. Wait for the real
                 // idle (the one after the last assistant message completes).
-                if (!stopping && busy && !lastAssistantDone && hasRunningTool()) {
+                if (!stopping && busy
+                        && (!lastAssistantDone || lastWasTool || hasRunningTool())) {
+                    // transient idle between agent steps (tool done, thinking
+                    // next) — NOT the end of the turn
                     return;
                 }
                 finishTurn();
@@ -1158,6 +1163,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         String ptype = str(part, "type");
 
         if ("text".equals(ptype)) {
+            lastWasTool = false;
             String text = str(part, "text");
             if (TextUtils.isEmpty(text)) return;
             clearRetryNotice();
@@ -1297,6 +1303,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             if (out.isEmpty()) out = str(state, "error");
             item.output = out;
 
+            lastWasTool = true;
+            // a long silent command must not trip the 180s watchdog
+            ui.removeCallbacks(busyWatchdog);
+            ui.postDelayed(busyWatchdog, 180_000L);
             if (!TextUtils.isEmpty(item.status)) {
                 setBusy(!"error".equals(item.status) && "running".equals(item.status));
             }
@@ -1508,9 +1518,11 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         input.setText("");
         lastUserText = text;
         addItem(ChatItem.user(text));
+        addWorkingRow();
         rememberSent(text);
         banner.setVisibility(View.GONE);
         closeExplore();
+        lastWasTool = false;
         workingStartMs = System.currentTimeMillis();
         turnAssistantKey = null;
         lastAssistantDone = true;
@@ -1564,6 +1576,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         removeWorking();
         markTurnDuration();
         stopping = false;
+        lastWasTool = false;
         setBusy(false);
         splitAssistantCode(byKey.get(turnAssistantKey));
         turnAssistantKey = null;
@@ -2305,11 +2318,47 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     private void addItem(ChatItem item) {
+        // the live Working row always stays LAST (below Thinking/Tool) — new
+        // rows land above it, so the user always sees the turn is running
+        int wi = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).kind == ChatItem.WORKING) {
+                wi = i;
+                break;
+            }
+        }
+        if (item.kind != ChatItem.WORKING && wi >= 0) {
+            ChatItem w = items.remove(wi);
+            adapter.notifyItemRemoved(wi);
+            items.add(item);
+            items.add(w);
+            adapter.notifyItemInserted(items.size() - 2);
+            byKey.put(item.key, item);
+            updateEmpty();
+            if (pinnedToBottom) scrollToBottomAnimated();
+            return;
+        }
         items.add(item);
         byKey.put(item.key, item);
         adapter.notifyItemInserted(items.size() - 1);
         updateEmpty();
         if (pinnedToBottom) scrollToBottomAnimated();
+    }
+
+    /** Adds (or moves to the end) the in-list live Working row. */
+    private void addWorkingRow() {
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).kind == ChatItem.WORKING) {
+                ChatItem w = items.remove(i);
+                adapter.notifyItemRemoved(i);
+                items.add(w);
+                adapter.notifyItemInserted(items.size() - 1);
+                return;
+            }
+        }
+        ChatItem w = ChatItem.working();
+        w.startMs = System.currentTimeMillis();
+        addItem(w);
     }
 
     private void rebind(ChatItem item) {
@@ -2462,7 +2511,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     /** Drops the "Working." row once a real part (thinking, tool, text) arrives. */
     private void removeWorking() {
-        ui.removeCallbacks(workingTick);
         for (int i = 0; i < items.size(); i++) {
             if (items.get(i).kind == ChatItem.WORKING) {
                 ChatItem removed = items.remove(i);
