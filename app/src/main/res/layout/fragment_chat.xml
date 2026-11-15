@@ -192,6 +192,7 @@
             android:id="@+id/empty"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/bg_empty_dim"
             android:orientation="vertical"
             android:gravity="center"
             android:paddingStart="24dp"
@@ -365,7 +366,7 @@
             android:id="@+id/working_spinner"
             android:layout_width="12dp"
             android:layout_height="12dp"
-            android:indeterminateTint="@color/warn" />
+            android:indeterminateTint="@color/text_primary" />
 
         <TextView
             android:id="@+id/working_text"
@@ -442,7 +443,7 @@
                     android:background="@drawable/bg_agent_chip"
                     android:drawableStart="@drawable/ic_spark"
                     android:drawablePadding="4dp"
-                    android:drawableTint="@color/accent_on_container"
+                    android:drawableTint="@color/text_primary"
                     android:fontFamily="@font/inter"
                     android:gravity="center_vertical"
                     android:paddingStart="9dp"
@@ -450,7 +451,7 @@
                     android:paddingTop="6dp"
                     android:paddingBottom="6dp"
                     android:text="@string/agent_build"
-                    android:textColor="@color/accent_on_container"
+                    android:textColor="@color/text_primary"
                     android:textSize="12sp"
                     android:textStyle="bold" />
 

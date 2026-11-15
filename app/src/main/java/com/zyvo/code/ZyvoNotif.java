@@ -72,9 +72,8 @@ public final class ZyvoNotif {
         PendingIntent wakeIntent = PendingIntent.getService(ctx, 1, wake,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Intent exit = new Intent(ctx, TermuxService.class);
-        exit.setAction(TermuxConstants.TERMUX_APP.TERMUX_SERVICE.ACTION_STOP_SERVICE);
-        PendingIntent exitIntent = PendingIntent.getService(ctx, 2, exit,
+        Intent exit = new Intent(ctx, ExitReceiver.class);
+        PendingIntent exitIntent = PendingIntent.getBroadcast(ctx, 2, exit,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         return new NotificationCompat.Builder(ctx, CHANNEL_ID)

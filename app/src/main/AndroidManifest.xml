@@ -248,6 +248,10 @@
             android:name="com.sec.android.support.multiwindow"
             android:value="true" />
 
+        <receiver
+            android:name="com.zyvo.code.ExitReceiver"
+            android:exported="false" />
+
         <service
             android:name="com.zyvo.code.adb.AdbPairService"
             android:exported="false"
