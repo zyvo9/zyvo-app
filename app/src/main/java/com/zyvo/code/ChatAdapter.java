@@ -1287,6 +1287,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.tag.setText("‹/›");
         h.lang.setText(item.lang.isEmpty() ? "code" : item.lang);
         h.body.setText(syntaxBlock(item.text));
+        h.body.setVisibility(View.VISIBLE);
         h.body.setMaxLines(14);
         h.body.setEllipsize(null);
         h.copy.setOnClickListener(v -> {
