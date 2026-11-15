@@ -641,7 +641,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 boolean longCmd = clean.length() > 120;
                 String shown = longCmd && !item.cmdExpanded
                         ? clean.substring(0, 119) + "…" : clean;
-                h.cmdLine.setText("$ " + shown);
+                h.cmdLine.setText(fadedPrefix("$ " + shown));
                 h.cmdFullToggle.setVisibility(longCmd ? View.VISIBLE : View.GONE);
                 h.cmdFullToggle.setText(item.cmdExpanded
                         ? "Hide full command ⌄" : "Show full command ⌄");
@@ -734,7 +734,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         boolean done = "completed".equals(status);
         if (n.contains("bash") || n.contains("shell") || n.contains("exec")
                 || n.contains("terminal")) {
-            return done ? "Ran command" : "Running command";
+            return "Terminal";
         }
         if (n.contains("write")) return done ? "Write file" : "Writing file";
         if (n.contains("patch")) return done ? "Applied patch" : "Applying patch";
