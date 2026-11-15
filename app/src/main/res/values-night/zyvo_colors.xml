@@ -17,8 +17,8 @@
 
     <!-- text -->
     <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#9A9A9A</color>
-    <color name="text_disabled">#6B6B6B</color>
+    <color name="text_secondary">#9CA3AF</color>
+    <color name="text_disabled">#70757C</color>
     <color name="text_faint">#4A4A4A</color>
     <color name="text_inverse">#000000</color>
     <color name="link">#E8A33D</color>

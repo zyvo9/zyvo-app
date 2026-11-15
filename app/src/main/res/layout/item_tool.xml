@@ -38,12 +38,12 @@
                 android:id="@+id/icon_box"
                 android:layout_width="22dp"
                 android:layout_height="22dp"
-                android:background="@drawable/bg_icon_box">
+                android:background="@android:color/transparent">
 
                 <ImageView
                     android:id="@+id/tool_icon"
-                    android:layout_width="13dp"
-                    android:layout_height="13dp"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
                     android:layout_gravity="center"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_lc_square_terminal"
@@ -57,7 +57,7 @@
                     android:fontFamily="monospace"
                     android:text="⠋"
                     android:textColor="@color/text_secondary"
-                    android:textSize="10sp"
+                    android:textSize="12sp"
                     android:visibility="gone" />
             </FrameLayout>
 
