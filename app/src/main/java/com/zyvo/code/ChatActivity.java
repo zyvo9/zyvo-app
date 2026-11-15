@@ -50,6 +50,11 @@ public final class ChatActivity extends AppCompatActivity {
 
         com.zyvo.code.adb.WdbContext.init(getApplicationContext());
 
+        // notifications (pairing + engine) need the runtime grant on API 33+
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 4102);
+        }
+
         // ChatActivity is the only launcher, so the stock Termux first-run flow
         // never triggers. Install the bootstrap (files/usr: bash, pkg, apt)
         // ourselves, or the engine's shell is stuck with toybox-only commands.

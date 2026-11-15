@@ -4,27 +4,34 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.RemoteInput;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 
 /**
- * Shizuku-style wireless-debugging pairing service: one low-priority ongoing
- * notification that carries the "enter pairing code" action while the user is
- * on the system's wireless debugging screen.
+ * Shizuku-style wireless-debugging pairing — fully automatic. The notification
+ * itself carries an inline text field: the user types the 6-digit code shown on
+ * the system pairing screen and taps send. Pairing port (mDNS _adb-tls-pairing)
+ * and connect port (mDNS _adb-tls-connect / probe) are both auto-discovered.
  */
 public class AdbPairService extends Service {
     private static final String TAG = "AdbPairService";
     public static final String CHANNEL_ID = "adb_pair";
     private static final int NOTIF_ID = 1102;
+    public static final String KEY_CODE = "adb_code";
 
     public static final String ACTION_START = "start";
     public static final String ACTION_STOP = "stop";
+    public static final String ACTION_CODE = "code";
+
+    private static volatile boolean pairing;
 
     public static void start(Context c) {
         try {
@@ -46,7 +53,7 @@ public class AdbPairService extends Service {
     public static void update(Context c, String status) {
         try {
             NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null && AdbPairService.isRunning) {
+            if (nm != null && isRunning) {
                 nm.notify(NOTIF_ID, build(c, status));
             }
         } catch (Throwable ignored) {
@@ -76,14 +83,73 @@ public class AdbPairService extends Service {
             return START_NOT_STICKY;
         }
         isRunning = true;
-        Notification n = build(this, PairState.isPaired(this)
-                ? "Paired — tap to manage" : "Tap to enter the pairing code");
+        Notification n = build(this, statusText(this));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
             startForeground(NOTIF_ID, n);
         }
+        // the inline code arrived from the notification's RemoteInput
+        if (intent != null && ACTION_CODE.equals(intent.getAction())) {
+            Bundle results = RemoteInput.getResultsFromIntent(intent);
+            if (results != null) {
+                String code = results.getCharSequence(KEY_CODE) != null
+                        ? results.getCharSequence(KEY_CODE).toString().trim().replace(" ", "") : "";
+                if (!code.isEmpty() && !pairing) pairFlow(code);
+            }
+        }
         return START_STICKY;
+    }
+
+    private String statusText(Context c) {
+        if (pairing) return "Pairing… keep the pairing screen open";
+        if (PairState.isPaired(c)) {
+            return AdbShellController.isConnected()
+                    ? "Connected ✓ — shell ready" : "Paired — open Wireless debugging, then type the code again to reconnect";
+        }
+        return "Type the 6-digit code from the pairing screen";
+    }
+
+    /** The full automatic flow: discover pair port -> pair -> discover connect port -> connect. */
+    private void pairFlow(String code) {
+        pairing = true;
+        update(this, "Pairing… keep the pairing screen open");
+        new Thread(() -> {
+            try {
+                // 1) the pairing port is only advertised while the system pairing
+                //    dialog is open — retry mDNS for up to ~15 s
+                int pairPort = -1;
+                for (int t = 0; t < 5 && pairPort <= 0; t++) {
+                    pairPort = AdbShellController.findPairPort(this);
+                    if (pairPort <= 0) Thread.sleep(1200);
+                }
+                if (pairPort <= 0) {
+                    update(this, "Open \"Pair device with pairing code\" first, then type the code again");
+                    pairing = false;
+                    return;
+                }
+                // 2) pair against loopback (IPv4 + IPv6 handled inside)
+                AdbPairClient.Result r = AdbPairClient.pair("127.0.0.1", pairPort, code);
+                if (!r.ok) {
+                    update(this, "Pair failed: " + r.message);
+                    pairing = false;
+                    return;
+                }
+                PairState.markPaired(this);
+                update(this, "Paired ✓ — finding the connect port…");
+                // 3) connect port auto-discovery (mDNS + probe + cache)
+                boolean up = AdbShellController.ensureConnected();
+                if (!up) Thread.sleep(1500); // one patient retry
+                if (!up) up = AdbShellController.ensureConnected();
+                update(this, up
+                        ? "Connected ✓ — the AI shell can run adb commands"
+                        : "Paired ✓ — connect failed: keep Wireless debugging ON, then tap Pair & connect in the app dialog");
+            } catch (Throwable t) {
+                update(this, "Pair failed: " + (t.getMessage() != null ? t.getMessage() : t.toString()));
+            } finally {
+                pairing = false;
+            }
+        }).start();
     }
 
     private static Notification build(Context c, String status) {
@@ -91,6 +157,24 @@ public class AdbPairService extends Service {
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, 1103, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // inline code entry on the notification itself
+        RemoteInput remote = new RemoteInput.Builder(KEY_CODE)
+                .setLabel("6-digit pairing code")
+                .build();
+        Intent code = new Intent(c, AdbPairService.class)
+                .setAction(ACTION_CODE);
+        PendingIntent codePi = PendingIntent.getService(c, 1104, code,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+        NotificationCompat.Action.WearableExtender ext =
+                new NotificationCompat.Action.WearableExtender();
+        NotificationCompat.Action codeAction = new NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_edit, "Enter code", codePi)
+                .addRemoteInput(remote)
+                .setAllowGeneratedReplies(false)
+                .extend(ext)
+                .build();
+
         return new NotificationCompat.Builder(c, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .setContentTitle("Zyvo ADB Connect")
@@ -98,6 +182,7 @@ public class AdbPairService extends Service {
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .addAction(codeAction)
                 .build();
     }
 
