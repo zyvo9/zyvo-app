@@ -1225,9 +1225,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             text = v.findViewById(R.id.working_text);
         }
 
-        @Override
         String baseLabel = "Working";
 
+        @Override
         void onFrame(String frame) {
             spin.setText(frame);
             if (startMs > 0) {
