@@ -48,6 +48,8 @@ public final class ChatActivity extends AppCompatActivity {
 
         drawer = findViewById(R.id.drawer_layout);
 
+        com.zyvo.code.adb.WdbContext.init(getApplicationContext());
+
         // ChatActivity is the only launcher, so the stock Termux first-run flow
         // never triggers. Install the bootstrap (files/usr: bash, pkg, apt)
         // ourselves, or the engine's shell is stuck with toybox-only commands.
@@ -74,6 +76,13 @@ public final class ChatActivity extends AppCompatActivity {
         });
         findViewById(R.id.btn_drawer_log).setOnClickListener(v -> {
             showEngineLog();
+            closeDrawer();
+        });
+        findViewById(R.id.btn_drawer_adb).setOnClickListener(v -> {
+            try {
+                startActivity(new Intent(this, com.zyvo.code.adb.AdbPairActivity.class));
+            } catch (Throwable ignored) {
+            }
             closeDrawer();
         });
         findViewById(R.id.btn_drawer_settings).setOnClickListener(v -> {
