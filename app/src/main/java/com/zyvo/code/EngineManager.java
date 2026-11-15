@@ -192,7 +192,7 @@ public final class EngineManager {
         root.add("fallback_models", fallback);
 
         // The app IS the approval surface, and the user already granted the
-        // phone-level permissions â€” so the agent never stalls on a prompt.
+        // phone-level permissions — so the agent never stalls on a prompt.
         JsonObject permission = new JsonObject();
         String[] keys = {"read", "edit", "glob", "grep", "list", "bash", "task",
                 "external_directory", "todowrite", "question", "webfetch", "websearch",
@@ -532,7 +532,7 @@ public final class EngineManager {
             if (process != null && !process.isAlive() && !probeHealth()) {
                 String tail = tailLog(6).trim();
                 setState(State.ERROR, tail.isEmpty()
-                        ? "engine exited during startup â€” open logs"
+                        ? "engine exited during startup — open logs"
                         : "engine exited: " + tail.replace('\n', ' '));
                 return;
             }

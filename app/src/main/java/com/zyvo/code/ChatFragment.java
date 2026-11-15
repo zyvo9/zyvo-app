@@ -1299,8 +1299,11 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // The first event often arrives before the input JSON is parsed, so the
             // path is only known a beat later - hide bookkeeping rows then.
             if (isBookkeeping(toolName, cmd)) item.hidden = true;
-            item.command = cmd;
-            item.diff = str(state, "diff");
+            // later events can arrive with EMPTY input/state — never wipe what
+            // earlier events already filled in
+            if (!TextUtils.isEmpty(cmd)) item.command = cmd;
+            String stateDiff = str(state, "diff");
+            if (!TextUtils.isEmpty(stateDiff)) item.diff = stateDiff;
             // Some engine states ship no diff — synthesize one from the edit
             // input so the removed(−)/added(+) lines always render red/green.
             if (TextUtils.isEmpty(item.diff)) {
@@ -1329,7 +1332,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
             String out = str(state, "output");
             if (out.isEmpty()) out = str(state, "error");
-            item.output = out;
+            if (!out.isEmpty() || "completed".equals(item.status)) item.output = out;
 
             lastWasTool = true;
             // a long silent command must not trip the 180s watchdog
