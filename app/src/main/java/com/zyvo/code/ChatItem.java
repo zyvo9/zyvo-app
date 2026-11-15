@@ -50,6 +50,8 @@ public final class ChatItem {
     public boolean animated = false;
     public boolean expanded = false;
     public boolean full = false;
+    /** The "$ command" box shows the whole command, not the 120-char preview. */
+    public boolean cmdExpanded = false;
     /** The `+N −N` chip was tapped — show the changed lines inline. */
     public boolean showDiff = false;
     public boolean error = false;

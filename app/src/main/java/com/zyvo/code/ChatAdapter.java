@@ -627,36 +627,79 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             h.body.setBackgroundResource(0);
         }
 
-        h.cmdLine.setVisibility(open && hasCmd ? View.VISIBLE : View.GONE);
-        if (open && hasCmd) h.cmdLine.setText(clean);
+        String tl = item.toolName == null ? "" : item.toolName.toLowerCase(Locale.ROOT);
+        boolean bashRow = tl.contains("bash") || tl.contains("shell") || tl.contains("exec")
+                || tl.contains("terminal") || tl.contains("cmd");
 
-        h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
-        if (open && hasDiffBody) {
-            // edit: unified diff body (SS-28)
-            h.output.setText(diffSpans(item.diff));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(null);
-        } else if (open && hasContent) {
-            // write: IDE-style numbered content (SS-26 look)
-            h.output.setText(numberedBody(item.content,
-                    plainOut.isEmpty() ? "" : plainOut));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(null);
-        } else if (open && !plainOut.isEmpty()) {
-            boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
-            h.output.setText(tailMode ? tail(plainOut, maxLines)
-                    : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
-            h.output.setMaxLines(maxLines);
-            h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
-        }
+        if (bashRow) {
+            // SS-30 command box: $ command + show-full toggle + output inside
+            h.cmdBox.setVisibility(open && hasCmd ? View.VISIBLE : View.GONE);
+            h.output.setVisibility(View.GONE);
+            h.expandOut.setVisibility(View.GONE);
+            h.expand.setVisibility(View.GONE);
+            if (open && hasCmd) {
+                boolean longCmd = clean.length() > 120;
+                String shown = longCmd && !item.cmdExpanded
+                        ? clean.substring(0, 119) + "…" : clean;
+                h.cmdLine.setText("$ " + shown);
+                h.cmdFullToggle.setVisibility(longCmd ? View.VISIBLE : View.GONE);
+                h.cmdFullToggle.setText(item.cmdExpanded
+                        ? "Hide full command ⌄" : "Show full command ⌄");
+                h.cmdFullToggle.setOnClickListener(v -> {
+                    item.cmdExpanded = !item.cmdExpanded;
+                    notifyItemChanged(position);
+                });
+                boolean hasOut = !plainOut.isEmpty();
+                h.cmdOutput.setVisibility(open && hasOut ? View.VISIBLE : View.GONE);
+                if (open && hasOut) {
+                    boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
+                    h.cmdOutput.setText(tailMode ? tail(plainOut, maxLines)
+                            : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
+                    h.cmdOutput.setMaxLines(maxLines);
+                    h.cmdOutput.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+                }
+                boolean overflow = total > maxLines;
+                h.expand.setVisibility(open && overflow ? View.VISIBLE : View.GONE);
+                if (overflow) {
+                    h.expand.setText(item.full
+                            ? ctx.getString(R.string.tap_collapse)
+                            : ctx.getString(R.string.lines_tap_expand, total));
+                }
+            }
+        } else {
+            h.cmdBox.setVisibility(View.GONE);
+            h.cmdOutput.setVisibility(View.GONE);
+            h.expand.setVisibility(View.GONE);
+            h.cmdFullToggle.setVisibility(View.GONE);
 
-        boolean overflow = total > maxLines;
-        boolean showMeta = open && overflow;
-        h.expand.setVisibility(showMeta ? View.VISIBLE : View.GONE);
-        if (showMeta) {
-            h.expand.setText(item.full
-                    ? ctx.getString(R.string.tap_collapse)
-                    : ctx.getString(R.string.lines_tap_expand, total));
+            h.output.setVisibility(open && hasOutput ? View.VISIBLE : View.GONE);
+            if (open && hasDiffBody) {
+                // edit: unified diff body (SS-28), syntax colored
+                h.output.setText(diffSpans(item.diff));
+                h.output.setMaxLines(maxLines);
+                h.output.setEllipsize(null);
+            } else if (open && hasContent) {
+                // write: IDE-style numbered content (SS-26 look), syntax colored
+                h.output.setText(numberedBody(item.content,
+                        plainOut.isEmpty() ? "" : plainOut));
+                h.output.setMaxLines(maxLines);
+                h.output.setEllipsize(null);
+            } else if (open && !plainOut.isEmpty()) {
+                boolean tailMode = running && !item.expanded && !item.full && total > maxLines;
+                h.output.setText(tailMode ? tail(plainOut, maxLines)
+                        : (item.full ? cap(plainOut, 400) : preview(plainOut, maxLines)));
+                h.output.setMaxLines(maxLines);
+                h.output.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+            }
+
+            boolean overflow = total > maxLines;
+            boolean showMeta = open && overflow;
+            h.expandOut.setVisibility(showMeta ? View.VISIBLE : View.GONE);
+            if (showMeta) {
+                h.expandOut.setText(item.full
+                        ? ctx.getString(R.string.tap_collapse)
+                        : ctx.getString(R.string.lines_tap_expand, total));
+            }
         }
 
         boolean canOpen = hasCmd || hasOutput || hasDiff;
@@ -671,6 +714,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.diff.setClickable(false);
 
         h.expand.setOnClickListener(v -> {
+            nextStage(item);
+            notifyItemChanged(position);
+        });
+        h.expandOut.setOnClickListener(v -> {
             nextStage(item);
             notifyItemChanged(position);
         });
@@ -792,6 +839,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 sb.setSpan(new android.text.style.BackgroundColorSpan(add ? bgAdd : bgDel),
                         start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
+            applySyntax(sb, tstart, sb.length());
             sb.append('\n');
             if (!del) fileLine++;
             lines++;
@@ -812,6 +860,85 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
     }
 
+    // -------------------------------------------------------- syntax colors
+
+    private static final String[] SYNTAX_KEYWORDS = {
+            "import", "package", "public", "private", "protected", "class", "void",
+            "static", "final", "return", "if", "else", "while", "for", "int",
+            "float", "double", "boolean", "new", "def", "function", "var", "val",
+            "const", "let", "true", "false", "null", "shape", "solid", "corners",
+            "stroke", "layer-list", "xmlns", "android", "resources", "item", "color"
+    };
+
+    /** IDE token colors over the appended text (SS-31 look): comments green,
+     *  strings orange, tags/keywords purple-teal, numbers pale. */
+    private void applySyntax(android.text.SpannableStringBuilder sb, int start, int end) {
+        if (end - start > 8000) return; // guard pathological lines
+        final int kw = 0xFFC586C0;
+        final int str = 0xFFCE9178;
+        final int com = 0xFF6A9955;
+        final int tag = 0xFF4EC9B0;
+        final int num = 0xFFB5CEA8;
+        int i = start;
+        while (i < end) {
+            char c = sb.charAt(i);
+            if (c == '#' || (c == '/' && i + 1 < end && sb.charAt(i + 1) == '/')) {
+                int j = i;
+                while (j < end && sb.charAt(j) != '\n') j++;
+                sb.setSpan(new ForegroundColorSpan(com), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                i = j;
+                continue;
+            }
+            if (c == '<' && i + 3 < end && sb.charAt(i + 1) == '!'
+                    && sb.charAt(i + 2) == '-' && sb.charAt(i + 3) == '-') {
+                int j = i + 4;
+                while (j < end && !(sb.charAt(j) == '-' && j + 1 < end
+                        && sb.charAt(j + 1) == '-' && sb.charAt(j + 2) == '>')) j++;
+                j = Math.min(j + 3, end);
+                sb.setSpan(new ForegroundColorSpan(com), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                i = j;
+                continue;
+            }
+            if (c == '<') {
+                int j = i;
+                while (j < end && sb.charAt(j) != '>') j++;
+                j = Math.min(j + 1, end);
+                sb.setSpan(new ForegroundColorSpan(tag), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                i = j;
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                int j = i + 1;
+                while (j < end && sb.charAt(j) != c && sb.charAt(j) != '\n') j++;
+                j = Math.min(j + 1, end);
+                sb.setSpan(new ForegroundColorSpan(str), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                i = j;
+                continue;
+            }
+            if (Character.isLetter(c)) {
+                int j = i;
+                while (j < end && (Character.isLetterOrDigit(sb.charAt(j)) || sb.charAt(j) == '_'
+                        || sb.charAt(j) == '-')) j++;
+                String word = sb.subSequence(i, j).toString();
+                boolean hit = false;
+                for (String k : SYNTAX_KEYWORDS) {
+                    if (k.equalsIgnoreCase(word)) {
+                        hit = true;
+                        break;
+                    }
+                }
+                if (hit) {
+                    sb.setSpan(new ForegroundColorSpan(kw), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                } else if (word.matches("\\d+(\\.\\d+)?")) {
+                    sb.setSpan(new ForegroundColorSpan(num), i, j, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+                i = j;
+                continue;
+            }
+            i++;
+        }
+    }
+
     /** IDE-style content body: right-aligned line-number gutter + the written
      *  file, with the tool output trailing in gray (agent-IDE look). */
     private CharSequence numberedBody(String content, String trailing) {
@@ -827,7 +954,10 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             sb.append(num).append("  ");
             sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            sb.append(lines[i]).append('\n');
+            int tstart = sb.length();
+            sb.append(lines[i]);
+            applySyntax(sb, tstart, sb.length());
+            sb.append('\n');
         }
         if (!TextUtils.isEmpty(trailing)) {
             int start = sb.length();
@@ -1167,10 +1297,14 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final ImageView icon;
         final TextView label;
         final TextView name;
+        final View cmdBox;
         final TextView cmdLine;
+        final TextView cmdFullToggle;
+        final TextView cmdOutput;
         final TextView diff;
         final TextView output;
         final TextView expand;
+        final TextView expandOut;
         final TextView diffBody;
         final ImageView chevron;
 
@@ -1182,10 +1316,14 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             icon = v.findViewById(R.id.tool_icon);
             label = v.findViewById(R.id.tool_label);
             name = v.findViewById(R.id.tool_name);
+            cmdBox = v.findViewById(R.id.cmd_box);
             cmdLine = v.findViewById(R.id.cmd_line);
+            cmdFullToggle = v.findViewById(R.id.cmd_full_toggle);
+            cmdOutput = v.findViewById(R.id.cmd_output);
             diff = v.findViewById(R.id.diff);
             output = v.findViewById(R.id.output);
             expand = v.findViewById(R.id.expand);
+            expandOut = v.findViewById(R.id.expand_out);
             diffBody = v.findViewById(R.id.diff_body);
             chevron = v.findViewById(R.id.chevron);
             spinner.setText(ChatAdapter.FRAMES[0]);

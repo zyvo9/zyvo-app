@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tool card (SS-30 design): one rounded container per tool -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/tool_bg" />
+    <solid android:color="@color/card" />
     <corners android:radius="10dp" />
 </shape>
