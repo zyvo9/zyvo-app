@@ -57,6 +57,7 @@ android {
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"" + project.ext.packageVariant + "\"" // Used by TermuxApplication class
         buildConfigField "String", "ZYVO_OPENCODE_KEY", "\"" + (project.findProperty("zyvoOpencodeKey") ?: "") + "\""
         buildConfigField "String", "ZYVO_GATEWAY_KEY", "\"" + (project.findProperty("zyvoGatewayKey") ?: "") + "\""
+        buildConfigField "int", "ZYVO_BUILD", "" + (project.findProperty("zyvoBuild") ?: "0")
 
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
         manifestPlaceholders.TERMUX_APP_NAME = "Zyvo Code"

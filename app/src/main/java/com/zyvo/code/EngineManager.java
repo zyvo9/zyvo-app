@@ -269,6 +269,39 @@ public final class EngineManager {
         }
     }
 
+    /** Installs the zyvo-adb bridge script into the Termux prefix: the AI runs
+     *  `zyvo-adb <command>` and it executes as the shell (2000) user through the
+     *  wireless-debugging link the app paired for itself. */
+    public void writeAdbBridge() {
+        try {
+            File prefix = new File(rootDir, "usr");
+            File bin = new File(prefix, "bin");
+            if (!bin.exists() && !bin.mkdirs()) return;
+            StringBuilder sb = new StringBuilder();
+            sb.append("#!/data/data/com.termux/files/usr/bin/sh
+");
+            sb.append("# zyvo-adb - run a shell-uid command through the app's wireless-debugging link
+");
+            sb.append("TOK=$(cat \"$HOME/.zyvo-adb-token\" 2>/dev/null)
+");
+            sb.append("exec 3<>/dev/tcp/127.0.0.1/4777 || exit 1
+");
+            sb.append("printf '%s\n' \"$TOK\"
+");
+            sb.append("printf '%s\n' \"$*\"
+");
+            sb.append("cat <&3
+");
+            File out = new File(bin, "zyvo-adb");
+            try (OutputStream os = new FileOutputStream(out)) {
+                os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            out.setExecutable(true, false);
+        } catch (Throwable t) {
+            Log.w(TAG, "adb bridge script failed: " + t.getMessage());
+        }
+    }
+
     public void writeAgentsInstructions() throws IOException {
         String prompt = new Prefs(app).systemPrompt();
         // App-UI rules ride along in AGENTS.md for every session: the chat UI
@@ -460,6 +493,7 @@ public final class EngineManager {
         setState(State.STARTING, "preparing files");
         ensureDirs();
         writeTermuxBrand();
+        writeAdbBridge();
 
         // A previous instance may still be serving (app restart, service alive).
         if (probeHealth()) {

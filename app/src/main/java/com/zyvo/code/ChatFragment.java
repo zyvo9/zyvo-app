@@ -482,6 +482,22 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         v.findViewById(R.id.btn_new).setOnClickListener(view -> newSession());
         v.findViewById(R.id.btn_sessions).setOnClickListener(view -> openSessionsDrawer());
 
+        // voice input: system speech recognizer fills the composer
+        View voiceBtn = v.findViewById(R.id.btn_voice);
+        if (voiceBtn != null) voiceBtn.setOnClickListener(view -> {
+            android.content.Intent i = new android.speech.RecognizerIntent
+                    .Intent(RecognizerIntent_ACTION());
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
+                    java.util.Locale.getDefault().toString());
+            try {
+                startActivityForResult(i, REQ_VOICE);
+            } catch (Throwable t) {
+                UiUtil.toast(requireContext(), "Voice input not available");
+            }
+        });
+
         // send button: tiny press feedback (Grok keeps the composer calm)
         if (send != null) send.setOnTouchListener((view, ev) -> {
             float s = ev.getAction() == MotionEvent.ACTION_DOWN ? 0.9f : 1f;
@@ -757,12 +773,24 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     private static final int REQ_ATTACH = 4201;
+    private static final int REQ_VOICE = 4202;
     private final java.util.List<Attach> attachments = new ArrayList<>();
     private LinearLayout attachRow;
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_VOICE && resultCode == android.app.Activity.RESULT_OK && data != null) {
+            java.util.ArrayList<String> said = data
+                    .getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
+            if (said != null && !said.isEmpty() && input != null) {
+                String existing = input.getText().toString();
+                String spoken = said.get(0);
+                input.setText(existing.isEmpty() ? spoken : existing + " " + spoken);
+                input.setSelection(input.getText().length());
+            }
+            return;
+        }
         if (requestCode != REQ_ATTACH || resultCode != android.app.Activity.RESULT_OK
                 || data == null || !isAdded()) return;
         List<Uri> uris = new ArrayList<>();
@@ -1577,6 +1605,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         markTurnDuration();
         stopping = false;
         lastWasTool = false;
+        notifyTaskDoneIfQuiet();
         setBusy(false);
         splitAssistantCode(byKey.get(turnAssistantKey));
         turnAssistantKey = null;

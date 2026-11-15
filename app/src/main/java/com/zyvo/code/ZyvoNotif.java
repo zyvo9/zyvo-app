@@ -59,6 +59,31 @@ public final class ZyvoNotif {
         refresh(ctx);
     }
 
+    /** "Task done" push: fired when a turn finishes with the screen off or the
+     *  app in the background. Tap = open the chat. */
+    public static void notifyTaskDone(Context ctx, String firstLine) {
+        ensureChannel(ctx);
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = new NotificationChannel("task_done", "Task finished",
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            nm.createNotificationChannel(ch);
+        }
+        Intent open = new Intent(ctx, ChatActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(ctx, 4105, open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification n = new NotificationCompat.Builder(ctx, "task_done")
+                .setSmallIcon(R.drawable.ic_terminal)
+                .setContentTitle("✓ Task done")
+                .setContentText(firstLine)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build();
+        nm.notify(4106, n);
+    }
+
     public static Notification build(Context ctx) {
         Intent open = new Intent(ctx, ChatActivity.class);
         open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);

@@ -49,6 +49,7 @@ public final class ChatActivity extends AppCompatActivity {
         drawer = findViewById(R.id.drawer_layout);
 
         com.zyvo.code.adb.WdbContext.init(getApplicationContext());
+        com.zyvo.code.adb.AdbBridgeServer.start(this);
 
         // notifications (pairing + engine) need the runtime grant on API 33+
         if (android.os.Build.VERSION.SDK_INT >= 33) {
@@ -102,6 +103,79 @@ public final class ChatActivity extends AppCompatActivity {
                 closeDrawer();
             });
         }
+
+        batteryPrompt();
+        checkUpdate();
+    }
+
+    /** Long background tasks die under battery optimization — ask once. */
+    private void batteryPrompt() {
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("zyvo_app", MODE_PRIVATE);
+            if (sp.getBoolean("battery_asked", false)) return;
+            sp.edit().putBoolean("battery_asked", true).apply();
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Battery optimization")
+                    .setMessage("Long AI tasks can be killed in the background. Allow Zyvo to run unrestricted?")
+                    .setPositiveButton("Allow", (d, w) -> {
+                        try {
+                            startActivity(new android.content.Intent(
+                                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    android.net.Uri.parse("package:" + getPackageName())));
+                        } catch (Throwable ignored) {}
+                    })
+                    .setNegativeButton("Not now", null)
+                    .show();
+        } catch (Throwable ignored) {}
+    }
+
+    /** GitHub release check: a newer apk-NN exists -> offer it. Silent when same. */
+    private void checkUpdate() {
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                java.net.URL url = new java.net.URL(
+                        "https://api.github.com/repos/zyvo9/zyvo-termux/releases/latest");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("Accept", "application/vnd.github+json");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                String tag = "";
+                try (java.io.BufferedReader in = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                    StringBuilder sb = new StringBuilder();
+                    String l;
+                    while ((l = in.readLine()) != null) sb.append(l);
+                    String body = sb.toString();
+                    int i = body.indexOf(""tag_name":"");
+                    if (i >= 0) {
+                        int a = i + 12;
+                        int e = body.indexOf('"', a);
+                        tag = body.substring(a, e);
+                    }
+                }
+                int latest = -1;
+                if (tag.startsWith("apk-")) latest = Integer.parseInt(tag.substring(4).trim());
+                int mine = BuildConfig.ZYVO_BUILD;
+                android.content.SharedPreferences sp = getSharedPreferences("zyvo_app", MODE_PRIVATE);
+                if (latest > mine && latest != sp.getInt("update_seen", -1)) {
+                    sp.edit().putInt("update_seen", latest).apply();
+                    runOnUiThread(() -> new androidx.appcompat.app.AlertDialog.Builder(this)
+                            .setTitle("Update available (apk-" + latest + ")")
+                            .setMessage("A newer Zyvo Code build is out. Open the release page to install it?")
+                            .setPositiveButton("Open", (d, w) -> {
+                                try {
+                                    startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://github.com/zyvo9/zyvo-termux/releases/tag/apk-"
+                                                    + latest)));
+                                } catch (Throwable ignored) {}
+                            })
+                            .setNegativeButton("Later", null)
+                            .show());
+                }
+            } catch (Throwable ignored) {}
+        });
     }
 
     @Override

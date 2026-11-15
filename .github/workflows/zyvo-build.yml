@@ -49,6 +49,7 @@ jobs:
           ./gradlew assembleDebug --no-daemon
           -PzyvoOpencodeKey="${{ secrets.ZYVO_OPENCODE_KEY }}"
           -PzyvoGatewayKey="${{ secrets.ZYVO_GATEWAY_KEY }}"
+          -PzyvoBuild="${{ github.run_number }}"
 
       - name: Publish APK
         env:

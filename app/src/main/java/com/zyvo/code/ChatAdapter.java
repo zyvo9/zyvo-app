@@ -304,6 +304,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 if (messageActions != null) messageActions.onRegenerate(item);
             });
             h.btnShare.setOnClickListener(v -> shareText(item.text));
+            h.btnTts.setOnClickListener(v -> toggleTts(h, item));
         }
     }
 
@@ -1088,6 +1089,46 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
     // ------------------------------------------------------------ holders
 
+
+    // ------------------------------------------------------------- read aloud
+
+    private static android.speech.tts.TextToSpeech tts;
+    private static boolean ttsReady;
+    private static String ttsKey;
+
+    /** Reply read-aloud (ChatGPT-style speaker): tap to play, tap again to stop. */
+    private void toggleTts(MessageVH h, ChatItem item) {
+        if (tts != null && ttsReady && item.key.equals(ttsKey)) {
+            tts.stop();
+            ttsKey = null;
+            h.btnTts.setImageTintList(android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(ctx, R.color.text_secondary)));
+            return;
+        }
+        if (tts == null) {
+            tts = new android.speech.tts.TextToSpeech(ctx, status -> {
+                ttsReady = status == android.speech.tts.TextToSpeech.SUCCESS;
+                if (ttsReady) {
+                    tts.setLanguage(new Locale("hin", "IND")); // Banglish latin reads fine
+                    if (h != null) speakNow(h, item);
+                }
+            });
+        } else if (ttsReady) {
+            speakNow(h, item);
+        }
+    }
+
+    private void speakNow(MessageVH h, ChatItem item) {
+        if (tts == null || !ttsReady) return;
+        String plain = plainMarkdown(item.text == null ? "" : item.text);
+        if (plain.length() > 4000) plain = plain.substring(0, 4000);
+        tts.setSpeechRate(1.15f);
+        tts.speak(plain, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, item.key);
+        ttsKey = item.key;
+        h.btnTts.setImageTintList(android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(ctx, R.color.ok)));
+    }
+
     static final class MessageVH extends RecyclerView.ViewHolder {
         final TextView text;
         final View actions;
@@ -1095,6 +1136,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final ImageButton btnCopy;
         final ImageButton btnRegen;
         final ImageButton btnShare;
+        final ImageButton btnTts;
 
         MessageVH(@NonNull View v) {
             super(v);
@@ -1104,6 +1146,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             btnCopy = v.findViewById(R.id.btn_copy);
             btnRegen = v.findViewById(R.id.btn_regen);
             btnShare = v.findViewById(R.id.btn_share);
+            btnTts = v.findViewById(R.id.btn_tts);
         }
     }
 
