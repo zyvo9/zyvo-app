@@ -148,7 +148,7 @@ public final class ChatActivity extends AppCompatActivity {
                     String l;
                     while ((l = in.readLine()) != null) sb.append(l);
                     String body = sb.toString();
-                    int i = body.indexOf(""tag_name":"");
+                    int i = body.indexOf("\"tag_name\":\"");
                     if (i >= 0) {
                         int a = i + 12;
                         int e = body.indexOf('"', a);

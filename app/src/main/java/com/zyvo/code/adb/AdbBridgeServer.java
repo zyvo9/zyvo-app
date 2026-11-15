@@ -57,8 +57,7 @@ public final class AdbBridgeServer {
             AdbShellController.Result r = AdbShellController.exec(cmd);
             OutputStream os = s.getOutputStream();
             String body = (r.ok ? "" : "[rejected] ") + (r.output == null ? "" : r.output);
-            os.write((body + "
-").getBytes(StandardCharsets.UTF_8));
+            os.write((body + "\n").getBytes(StandardCharsets.UTF_8));
             os.flush();
         } catch (Throwable ignored) {}
     }

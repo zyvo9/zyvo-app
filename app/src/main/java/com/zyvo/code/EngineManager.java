@@ -278,20 +278,13 @@ public final class EngineManager {
             File bin = new File(prefix, "bin");
             if (!bin.exists() && !bin.mkdirs()) return;
             StringBuilder sb = new StringBuilder();
-            sb.append("#!/data/data/com.termux/files/usr/bin/sh
-");
-            sb.append("# zyvo-adb - run a shell-uid command through the app's wireless-debugging link
-");
-            sb.append("TOK=$(cat \"$HOME/.zyvo-adb-token\" 2>/dev/null)
-");
-            sb.append("exec 3<>/dev/tcp/127.0.0.1/4777 || exit 1
-");
-            sb.append("printf '%s\n' \"$TOK\"
-");
-            sb.append("printf '%s\n' \"$*\"
-");
-            sb.append("cat <&3
-");
+            sb.append("#!/data/data/com.termux/files/usr/bin/sh\n");
+            sb.append("# zyvo-adb - run a shell-uid command through the app's wireless-debugging link\n");
+            sb.append("TOK=$(cat \"$HOME/.zyvo-adb-token\" 2>/dev/null)\n");
+            sb.append("exec 3<>/dev/tcp/127.0.0.1/4777 || exit 1\n");
+            sb.append("printf '%s\\n' \"$TOK\"\n");
+            sb.append("printf '%s\\n' \"$*\"\n");
+            sb.append("cat <&3\n");
             File out = new File(bin, "zyvo-adb");
             try (OutputStream os = new FileOutputStream(out)) {
                 os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
