@@ -2427,7 +2427,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         java.util.List<ChatItem> out = new ArrayList<>();
         if (item == null || TextUtils.isEmpty(item.text)) return out;
         java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("```([A-Za-z0-9_+#.-]*)\s*\n(.*?)```", java.util.regex.Pattern.DOTALL)
+                .compile("```([A-Za-z0-9_+#.-]*)\\s*\\n(.*?)```", java.util.regex.Pattern.DOTALL)
                 .matcher(item.text);
         int last = 0;
         int ti = 0;
@@ -2437,8 +2437,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 if (!t.trim().isEmpty()) out.add(textSeg(item, t, ti++));
             }
             String body = m.group(2);
-            if (body.endsWith("
-")) body = body.substring(0, body.length() - 1);
+            if (body.endsWith("\n")) body = body.substring(0, body.length() - 1);
             if (!body.trim().isEmpty()) out.add(ChatItem.code(body, m.group(1)));
             last = m.end();
         }
