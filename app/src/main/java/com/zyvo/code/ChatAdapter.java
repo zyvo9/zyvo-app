@@ -53,6 +53,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private static final int V_TODO = 6;
     private static final int V_NOTICE = 7;
     private static final int V_ERROR = 8;
+    private static final int V_CODE = 9;
 
     static final String[] FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
 
@@ -131,6 +132,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 return V_NOTICE;
             case ChatItem.ERROR:
                 return V_ERROR;
+            case ChatItem.CODE:
+                return V_CODE;
             default:
                 return V_ASSISTANT;
         }
@@ -163,6 +166,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
         if (viewType == V_ERROR) {
             return new ErrorVH(inf.inflate(R.layout.item_error, parent, false));
+        }
+        if (viewType == V_CODE) {
+            return new CodeVH(inf.inflate(R.layout.item_code, parent, false));
         }
         return new MessageVH(inf.inflate(R.layout.item_message_assistant, parent, false));
     }
@@ -1213,6 +1219,56 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.text.setText(item.text == null ? "" : item.text);
     }
 
+    /** ChatGPT-style code card: lang label + copy + expand + syntax body. */
+    private void bindCode(CodeVH h, ChatItem item) {
+        animateIn(h.itemView, item);
+        h.tag.setText("‹/›");
+        h.lang.setText(item.lang.isEmpty() ? "code" : item.lang);
+        h.body.setText(syntaxBlock(item.text));
+        h.body.setMaxLines(14);
+        h.body.setEllipsize(null);
+        h.copy.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(ClipData.newPlainText("code", item.text));
+                UiUtil.toast(ctx, ctx.getString(R.string.copied));
+            }
+        });
+        h.expand.setOnClickListener(v -> showCodeDialog(item.lang.isEmpty() ? "code" : item.lang, item.text));
+    }
+
+    /** Full-screen viewer for a long code block (copy available there too). */
+    private void showCodeDialog(String lang, String code) {
+        android.widget.ScrollView scroll = new android.widget.ScrollView(ctx);
+        TextView tv = new TextView(ctx);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextSize(12);
+        tv.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary));
+        tv.setPadding(dp(12), dp(12), dp(12), dp(12));
+        tv.setTextIsSelectable(true);
+        tv.setText(syntaxBlock(code));
+        scroll.addView(tv);
+        new androidx.appcompat.app.AlertDialog.Builder(ctx)
+                .setTitle(lang)
+                .setView(scroll)
+                .setPositiveButton(android.R.string.ok, null)
+                .setNeutralButton(R.string.copy, (d, w) -> {
+                    ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) {
+                        cm.setPrimaryClip(ClipData.newPlainText("code", code));
+                        UiUtil.toast(ctx, ctx.getString(R.string.copied));
+                    }
+                })
+                .show();
+    }
+
+    /** Colored code body (plain syntax span, no markdown). */
+    private CharSequence syntaxBlock(String code) {
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(code == null ? "" : code);
+        applySyntax(sb, 0, sb.length());
+        return sb;
+    }
+
     static final class TodoVH extends RecyclerView.ViewHolder {
         final TextView count;
         final android.widget.LinearLayout rows;
@@ -1287,6 +1343,23 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             double t = (System.currentTimeMillis() % 1400) / 1400.0;
             float pulse = (float) (0.55 + 0.45 * (0.5 - 0.5 * Math.cos(2 * Math.PI * t)));
             spinner.setAlpha(pulse);
+        }
+    }
+
+    static final class CodeVH extends RecyclerView.ViewHolder {
+        final TextView tag;
+        final TextView lang;
+        final ImageView copy;
+        final ImageView expand;
+        final TextView body;
+
+        CodeVH(@NonNull View v) {
+            super(v);
+            tag = v.findViewById(R.id.code_tag);
+            lang = v.findViewById(R.id.code_lang);
+            copy = v.findViewById(R.id.code_copy);
+            expand = v.findViewById(R.id.code_expand);
+            body = v.findViewById(R.id.code_body);
         }
     }
 

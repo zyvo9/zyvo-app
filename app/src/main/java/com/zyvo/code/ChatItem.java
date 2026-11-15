@@ -13,6 +13,7 @@ public final class ChatItem {
     public static final int TODO = 7;
     /** Amber card for engine problems the user must see (quota, auth, stall). */
     public static final int NOTICE = 8;
+    public static final int CODE = 9;
 
     /** One row of the engine's todo list. */
     public static final class Todo {
@@ -44,6 +45,8 @@ public final class ChatItem {
     /** Live line count while a write/edit streams (shown as +N before the diff lands). */
     public int liveLines = 0;
     public String title = "";
+    /** Fenced-code language tag for CODE rows. */
+    public String lang = "";
     /** Bookkeeping writes (AGENTS.md / SKILL.md / vault) stay invisible. */
     public boolean hidden = false;
     /** Entrance animation already played for this row. */
@@ -90,6 +93,16 @@ public final class ChatItem {
         ChatItem i = new ChatItem();
         i.kind = TOOL;
         i.key = key;
+        return i;
+    }
+
+    public static ChatItem code(String content, String lang) {
+        ChatItem i = new ChatItem();
+        i.kind = CODE;
+        i.key = "code-" + System.nanoTime();
+        i.text = content == null ? "" : content;
+        i.lang = lang == null ? "" : lang;
+        i.timeMs = System.currentTimeMillis();
         return i;
     }
 

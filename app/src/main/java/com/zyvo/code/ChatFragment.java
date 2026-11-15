@@ -1565,6 +1565,8 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         markTurnDuration();
         stopping = false;
         setBusy(false);
+        splitAssistantCode(byKey.get(turnAssistantKey));
+        turnAssistantKey = null;
         sendQueuedIfAny();
     }
 
@@ -2235,7 +2237,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                         item.fullText = text;
                         item.shown = text.length();
                         item.durationMs = msgDuration(info);
-                        out.add(item);
+                        out.addAll(splitCodeSegments(item));
                     }
                 } else if ("tool".equals(ptype)) {
                     JsonObject state = part.has("state") && part.get("state").isJsonObject()
@@ -2403,6 +2405,60 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             }
         }
         scrollIfPinned();
+    }
+
+    /** Splits a finished assistant reply into text segments + ChatGPT-style
+     *  CODE cards (one per fenced block). No-op when there is no fence. */
+    private void splitAssistantCode(ChatItem item) {
+        if (item == null || item.kind != ChatItem.ASSISTANT || TextUtils.isEmpty(item.text)) return;
+        java.util.List<ChatItem> repl = splitCodeSegments(item);
+        if (repl.size() <= 1) return;
+        int idx = items.indexOf(item);
+        if (idx < 0) return;
+        byKey.remove(item.key);
+        items.remove(idx);
+        items.addAll(idx, repl);
+        adapter.notifyItemRangeRemoved(idx, 1);
+        adapter.notifyItemRangeInserted(idx, repl.size());
+        turnAssistantKey = null;
+    }
+
+    private java.util.List<ChatItem> splitCodeSegments(ChatItem item) {
+        java.util.List<ChatItem> out = new ArrayList<>();
+        if (item == null || TextUtils.isEmpty(item.text)) return out;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("```([A-Za-z0-9_+#.-]*)\s*\n(.*?)```", java.util.regex.Pattern.DOTALL)
+                .matcher(item.text);
+        int last = 0;
+        int ti = 0;
+        while (m.find()) {
+            if (m.start() > last) {
+                String t = item.text.substring(last, m.start());
+                if (!t.trim().isEmpty()) out.add(textSeg(item, t, ti++));
+            }
+            String body = m.group(2);
+            if (body.endsWith("
+")) body = body.substring(0, body.length() - 1);
+            if (!body.trim().isEmpty()) out.add(ChatItem.code(body, m.group(1)));
+            last = m.end();
+        }
+        if (last < item.text.length()) {
+            String t = item.text.substring(last);
+            if (!t.trim().isEmpty()) out.add(textSeg(item, t, ti++));
+        }
+        if (out.isEmpty()) out.add(item);
+        return out;
+    }
+
+    private ChatItem textSeg(ChatItem src, String text, int n) {
+        ChatItem a = ChatItem.assistant(src.key + "-t" + n);
+        a.text = text;
+        a.fullText = text;
+        a.shown = text.length();
+        a.timeMs = src.timeMs;
+        a.durationMs = src.durationMs;
+        a.animated = true;
+        return a;
     }
 
     /** Drops the "Working." row once a real part (thinking, tool, text) arrives. */
