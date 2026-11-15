@@ -335,9 +335,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         topDot = null;
         modelChip = null;
         composerModel = v.findViewById(R.id.composer_model);
-        workingBar = v.findViewById(R.id.working_bar);
-        workingBarText = v.findViewById(R.id.working_text);
-        workingSpinner = v.findViewById(R.id.working_spinner);
         attachRow = v.findViewById(R.id.attach_row);
         queuedBar = v.findViewById(R.id.queued_bar);
         queuedText = v.findViewById(R.id.queued_text);
@@ -1618,10 +1615,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** Stop pressed: keep the strip alive with "Stopping…" until the engine goes idle. */
     private void stopTurn() {
         stopping = true;
-        if (workingBarText != null) {
-            workingBarText.setText(getString(R.string.stopping));
-        }
-        if (workingSpinner != null) workingSpinner.setVisibility(View.VISIBLE);
+        setWorkingRowText(getString(R.string.stopping));
         flushReveal();
         final String sid = sessionId;
         if (sid != null) io.execute(() -> api.abort(sid));

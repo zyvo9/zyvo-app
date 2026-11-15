@@ -262,37 +262,6 @@
         android:paddingBottom="2dp"
         android:visibility="gone" />
 
-    <!-- pinned working strip: stays above the composer for the whole turn -->
-    <LinearLayout
-        android:id="@+id/working_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/bg"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingTop="3dp"
-        android:paddingBottom="1dp"
-        android:visibility="gone">
-
-        <ProgressBar
-            android:id="@+id/working_spinner"
-            android:layout_width="12dp"
-            android:layout_height="12dp"
-            android:indeterminateTint="@color/text_primary" />
-
-        <TextView
-            android:id="@+id/working_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:fontFamily="@font/inter"
-            android:text="@string/working"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
-    </LinearLayout>
-
     <!-- composer -->
     <LinearLayout
         android:layout_width="match_parent"
