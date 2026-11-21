@@ -634,7 +634,14 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.label.setTextColor(ContextCompat.getColor(ctx,
                 failed ? R.color.danger : R.color.text_secondary));
 
-        String title = prettyTitle(item, clean);
+        String title;
+        if (!TextUtils.isEmpty(item.label)) {
+            // the model narrates the step itself ("Pull engine DB and WAL
+            // from phone") - that human line is the header (ZCode-style)
+            title = item.label;
+        } else {
+            title = prettyTitle(item, clean);
+        }
         if (title.length() > 56) title = title.substring(0, 55).trim() + "…";
         h.name.setText(fadedPrefix(title));
         h.name.setTextColor(ContextCompat.getColor(ctx,
@@ -897,13 +904,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         boolean done = "completed".equals(status);
         if (n.contains("bash") || n.contains("shell") || n.contains("exec")
                 || n.contains("terminal")) {
-            return "Terminal";
+            return done ? "Ran" : "Running";
         }
-        if (n.contains("write")) return done ? "Write file" : "Writing file";
+        if (n.contains("write")) return done ? "Wrote" : "Writing file";
         if (n.contains("patch")) return done ? "Applied patch" : "Applying patch";
-        if (n.contains("edit")) return done ? "Edited file" : "Editing file";
+        if (n.contains("edit")) return done ? "Edited" : "Editing";
         if (n.equals("read") || n.startsWith("read_") || n.endsWith("read")) {
-            return done ? "Read file" : "Reading file";
+            return done ? "Read" : "Reading";
         }
         if (n.contains("grep")) return done ? "Searched code" : "Searching code";
         if (n.contains("glob") || n.contains("find")) return done ? "Found files" : "Finding files";
@@ -911,9 +918,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         if (n.contains("webfetch") || n.contains("web") || n.contains("http")) {
             return done ? "Fetched page" : "Fetching page";
         }
-        if (n.contains("task") || n.contains("agent")) return "Subagent";
+        if (n.contains("task") || n.contains("agent")) return done ? "Ran subagent" : "Subagent";
         if (n.contains("todo")) return "Tasks";
-        return done ? "Used tool" : "Using tool";
+        return done ? "Ran" : "Running";
     }
 
     /** Terminal / Write / Edit start open -> full -> closed. Other tools start closed -> open -> full. */
@@ -1177,10 +1184,17 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
      *  strips redirects/env-prefixes/chains so a command reads as its work
      *  ("pkg install -y python") instead of a raw /data/user/0 dump. */
     private static String prettyTitle(ChatItem item, String clean) {
-        String s = !TextUtils.isEmpty(item.label) ? item.label
-                : (!TextUtils.isEmpty(clean) ? clean : firstLine(item.output));
+        String tl = item.toolName == null ? "" : item.toolName.toLowerCase(Locale.ROOT);
+        String s = clean;
+        if (s == null || s.trim().isEmpty()) s = firstLine(item.output);
         s = s == null ? "" : s.trim();
         if (s.isEmpty()) return titleFor(item.toolName, clean);
+        // file tools: the header shows just the file name (screenshot style)
+        if (tl.contains("write") || tl.contains("edit") || tl.contains("patch")
+                || tl.equals("read") || tl.startsWith("read_") || tl.endsWith("read")) {
+            int i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+            return i >= 0 ? s.substring(i + 1) : s;
+        }
         // single command only: cut chains at ; && ||
         int cut = s.length();
         for (String c2 : new String[]{"; ", " && ", " || "}) {

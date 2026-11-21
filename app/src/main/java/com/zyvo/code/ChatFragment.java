@@ -1348,6 +1348,11 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // later events can arrive with EMPTY input/state — never wipe what
             // earlier events already filled in
             if (!TextUtils.isEmpty(cmd)) item.command = cmd;
+            // the model narrates every tool call (opencode's description field:
+            // "Pull engine DB and WAL from phone") — that human line IS the
+            // card header, not the raw command
+            String d2 = str(inp, "description");
+            if (!TextUtils.isEmpty(d2)) item.label = d2;
             String stateDiff = str(state, "diff");
             if (!TextUtils.isEmpty(stateDiff)) item.diff = stateDiff;
             // Some engine states ship no diff — synthesize one from the edit
