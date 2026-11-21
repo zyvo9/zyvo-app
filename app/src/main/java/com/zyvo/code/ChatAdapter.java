@@ -904,7 +904,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         boolean done = "completed".equals(status);
         if (n.contains("bash") || n.contains("shell") || n.contains("exec")
                 || n.contains("terminal")) {
-            return done ? "Ran" : "Running";
+            return "Terminal";
         }
         if (n.contains("write")) return done ? "Wrote" : "Writing file";
         if (n.contains("patch")) return done ? "Applied patch" : "Applying patch";
