@@ -252,6 +252,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     private int groupSeq;
     /** session.idle can fire between agent steps — settle only after silence. */
     private long idleAtMs;
+    /** The gap between agent steps (the next LLM call starting) regularly runs
+     *  past a second, so the settle window must cover a thinking pause. */
+    private static final long IDLE_SETTLE_MS = 2500L;
     private final Runnable idleSettle = new Runnable() {
         @Override
         public void run() {
@@ -1200,7 +1203,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                         if (!busy && !stopping) setBusy(true);
                     } else if ("idle".equals(st)) {
                         lastSignalMs = System.currentTimeMillis();
-                        if (busy) finishTurn();
+                        if (!busy) return;
+                        if (stopping) { finishTurn(); return; }
+                        if (hasRunningTool()) return;
+                        // The engine flips idle between agent steps too (the gap
+                        // while the next LLM call starts). The old instant
+                        // finishTurn here removed the Working row mid-turn and
+                        // collapsed the live thought - so use the SAME settle
+                        // guard as the session.idle event.
+                        idleAtMs = lastSignalMs;
+                        ui.removeCallbacks(idleSettle);
+                        ui.postDelayed(idleSettle, IDLE_SETTLE_MS);
                     }
                 }
             } else if ("session.error".equals(type)) {
@@ -1235,7 +1248,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 // (P0-4: a turn that ENDS on a tool used to strand busy forever).
                 idleAtMs = lastSignalMs;
                 ui.removeCallbacks(idleSettle);
-                ui.postDelayed(idleSettle, 900);
+                ui.postDelayed(idleSettle, IDLE_SETTLE_MS);
             }
         } catch (Throwable t) {
             // never let a malformed event kill the stream
@@ -1267,6 +1280,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             }
             ChatItem item = byKey.get(pid);
             if (item == null) {
+                resumeTurnIfSettled();
                 finishThoughts();
                 item = ChatItem.assistant(pid);
                 addItem(item);
@@ -1319,6 +1333,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
             ChatItem item = existing;
             if (item == null) {
+                resumeTurnIfSettled();
                 clearRetryNotice();
                 finishThoughts();
                 item = ChatItem.tool(pid);
@@ -1381,6 +1396,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 // reasoning-start arrives with empty text — create the row NOW so
                 // the token deltas that follow have a home (this is what makes
                 // "Thinking" stream smoothly instead of popping in at the end).
+                resumeTurnIfSettled();
                 clearRetryNotice();
                 item = ChatItem.thought(pid);
                 item.expanded = false;
@@ -1437,6 +1453,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         ChatItem item = byKey.get(pid);
         if (item == null) {
             if ("reasoning".equals(ptype)) {
+                resumeTurnIfSettled();
                 item = ChatItem.thought(pid);
                 item.expanded = false;
                 item.streaming = true;
@@ -1444,6 +1461,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
             } else if ("text".equals(ptype)) {
+                resumeTurnIfSettled();
                 finishThoughts();
                 item = ChatItem.assistant(pid);
                 addItem(item);
@@ -1680,6 +1698,23 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         splitAssistantCode(byKey.get(turnAssistantKey));
         turnAssistantKey = null;
         sendQueuedIfAny();
+    }
+
+    /**
+     * A new engine part arrived while the turn looked finished: the engine
+     * paused longer than the idle settle between agent steps (a thinking gap)
+     * and the settle ended the turn early, removing the Working row. Re-arm
+     * the status so Working stays visible for the rest of the turn.
+     */
+    private void resumeTurnIfSettled() {
+        if (stopping) return;
+        if (sessionId == null || sessionId.isEmpty()) return;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).kind == ChatItem.WORKING) return; // status still up
+        }
+        setBusy(true);
+        workingStartMs = System.currentTimeMillis();
+        addWorkingRow();
     }
 
     /** Stop pressed: keep the strip alive with "Stopping…" until the engine goes idle. */
