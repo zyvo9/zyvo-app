@@ -634,11 +634,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         h.label.setTextColor(ContextCompat.getColor(ctx,
                 failed ? R.color.danger : R.color.text_secondary));
 
-        String desc = !TextUtils.isEmpty(item.label) ? item.label : clean;
-        if (TextUtils.isEmpty(desc)) desc = firstLine(item.output);
-        desc = desc == null ? "" : desc.trim();
-        String title = desc.isEmpty() ? titleFor(item.toolName, clean) : firstLine(desc);
-        if (title.length() > 90) title = title.substring(0, 89) + "…";
+        String title = prettyTitle(item, clean);
+        if (title.length() > 56) title = title.substring(0, 55).trim() + "…";
         h.name.setText(fadedPrefix(title));
         h.name.setTextColor(ContextCompat.getColor(ctx,
                 failed ? R.color.danger : R.color.text_primary));
@@ -1174,6 +1171,41 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         String n = tool == null ? "" : tool.toLowerCase(Locale.ROOT);
         if (n.contains("bash") || n.contains("shell") || n.contains("exec")) return true;
         return n.isEmpty() && command != null && !command.isEmpty();
+    }
+
+    /** Header title: short and human. Collapses app-internal paths to ~,
+     *  strips redirects/env-prefixes/chains so a command reads as its work
+     *  ("pkg install -y python") instead of a raw /data/user/0 dump. */
+    private static String prettyTitle(ChatItem item, String clean) {
+        String s = !TextUtils.isEmpty(item.label) ? item.label
+                : (!TextUtils.isEmpty(clean) ? clean : firstLine(item.output));
+        s = s == null ? "" : s.trim();
+        if (s.isEmpty()) return titleFor(item.toolName, clean);
+        // single command only: cut chains at ; && ||
+        int cut = s.length();
+        for (String c2 : new String[]{"; ", " && ", " || "}) {
+            int i = s.indexOf(c2);
+            if (i > 0 && i < cut) cut = i;
+        }
+        s = s.substring(0, cut);
+        // env prefixes and launcher wrappers
+        s = s.replaceFirst("^(\\w+=\\S+\\s+)+", "");
+        s = s.replaceFirst("^(nohup\\s+|setsid\\s+|timeout\\s+\\d+\\s+|sudo\\s+)", "");
+        // redirects and stdin markers
+        s = s.replaceAll("\\s*\\d?>+\\s*\\S+", "").replaceAll("\\s*\\d?<\\s*\\S+", "").trim();
+        if (s.endsWith("&")) s = s.substring(0, s.length() - 1).trim();
+        if (s.startsWith("(")) s = s.substring(1).trim();
+        // app-internal absolute paths -> ~
+        s = s.replace("/data/user/0/com.termux/files", "~")
+             .replace("/data/data/com.termux/files", "~");
+        // very long path tail: keep the filename
+        if (s.length() > 48 && s.contains("/")) {
+            int i = s.lastIndexOf('/');
+            if (i >= 0) s = "…/" + s.substring(i + 1);
+        }
+        if (s.length() > 48) s = s.substring(0, 47).trim() + "…";
+        if (s.isEmpty()) return titleFor(item.toolName, clean);
+        return s;
     }
 
     private static String titleFor(String tool, String command) {
