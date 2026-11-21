@@ -160,38 +160,50 @@ public class AdbShellController {
         if (!keyFile.exists() || !certFile.exists()) return null;
         PrivateKey key = AdbClient.loadKey(readText(keyFile));
         String certPem = readText(certFile);
-        // 2) 发现无线调试端口（缓存/mDNS/本机监听端口，含 IPv6）
-        List<Integer> candidates = discoverPorts(ctx);
-        // 3) 逐个尝试连接（IPv4/IPv6 双栈，鸿蒙等 ROM 的 adbd 常仅监听 IPv6）
-        for (int port : candidates) {
+        // 2) FAST PATH FIRST（Shizuku-speed）：缓存端口 + /proc 监听端口（瞬时、
+        //    零网络等待）+ 明文 5555。无线调试端口永远是一个回环 LISTEN 端口，
+        //    /proc/net/tcp{,6} 一步就能锁定它 —— 命中时整条链路 < 1s。
+        //    旧流程先等 mDNS（NsdManager 3.5s + socket 兜底再 6s）再连接，
+        //    即使缓存端口本来就能连上。
+        LinkedHashSet<Integer> fast = new LinkedHashSet<>();
+        int cached = getCachedPort(ctx);
+        if (cached > 0) fast.add(cached);
+        for (int p : procListenPorts()) fast.add(p);
+        fast.add(5555);
+        LinkedHashSet<Integer> tried = new LinkedHashSet<>();
+        for (int port : fast) {
+            tried.add(port);
             AdbClient c = tryConnectPort(port, key, certPem);
-            if (c != null) {
-                adb = c;
-                lastUsedMs = System.currentTimeMillis();
-                cachePort(ctx, port);
-                PairState.markPaired(ctx);
-                Log.i(TAG, "connected via wireless adb port " + port);
-                writeDiag(ctx, "connected port=" + port + " host=" + hostProbe(port));
-                return adb;
-            }
+            if (c != null) return connected(ctx, c, port, "fast");
         }
-        // 候选全部失败：补充一次全量监听端口兜底（/proc 不可读时）
+        // 3) mDNS（窗口已缩短：NsdManager 1.5s，socket 兜底 1.5s）
+        int mdns = discoverMdns(ctx);
+        if (mdns > 0 && !tried.contains(mdns)) {
+            tried.add(mdns);
+            AdbClient c = tryConnectPort(mdns, key, certPem);
+            if (c != null) return connected(ctx, c, mdns, "mdns");
+        }
+        // 4) 最后兜底：全量监听/范围扫描（/proc 不可读时）
         for (int port : scanLocalPorts()) {
-            if (candidates.contains(port)) continue;
+            if (tried.contains(port)) continue;
+            tried.add(port);
             AdbClient c = tryConnectPort(port, key, certPem);
-            if (c != null) {
-                adb = c;
-                lastUsedMs = System.currentTimeMillis();
-                cachePort(ctx, port);
-                PairState.markPaired(ctx);
-                Log.i(TAG, "connected via scan port " + port);
-                writeDiag(ctx, "connected port=" + port + " host=" + hostProbe(port));
-                return adb;
-            }
+            if (c != null) return connected(ctx, c, port, "scan");
         }
         lastFailMs = System.currentTimeMillis();
-        writeDiag(ctx, "no port connected. candidates=" + candidates + " mdns=" + discoverMdns(ctx));
+        writeDiag(ctx, "no port connected. tried=" + tried + " mdns=" + mdns);
         return null;
+    }
+
+    /** 连接成功后的公共收尾：缓存端口 + 标记配对 + 诊断日志。 */
+    private static AdbClient connected(Context ctx, AdbClient c, int port, String via) {
+        adb = c;
+        lastUsedMs = System.currentTimeMillis();
+        cachePort(ctx, port);
+        PairState.markPaired(ctx);
+        Log.i(TAG, "connected via " + via + " wireless adb port " + port);
+        writeDiag(ctx, "connected port=" + port + " host=" + hostProbe(port) + " via=" + via);
+        return adb;
     }
 
     /** 双栈连接尝试：先 IPv4 后 IPv6，连接+认证成功才返回客户端。 */
@@ -263,19 +275,8 @@ public class AdbShellController {
         } catch (Throwable ignored) {}
     }
 
-    /** 端口发现：缓存端口 -> mDNS -> 本机端口扫描（TCP 连通性）。 */
-    private static List<Integer> discoverPorts(Context ctx) {
-        LinkedHashSet<Integer> set = new LinkedHashSet<>();
-        // 明文 AUTH 端口（adb tcpip 5555）：ColorOS 无线调试 TLS 端口系统性不可用，优先此通道
-        set.add(5555);
-        int cached = getCachedPort(ctx);
-        if (cached > 0) set.add(cached);
-        int mdns = discoverMdns(ctx);
-        if (mdns > 0) set.add(mdns);
-        // /proc 监听端口（含 IPv6 监听）始终纳入候选，避免 mDNS 不通导致漏扫
-        for (int p : scanLocalPorts()) set.add(p);
-        return new ArrayList<>(set);
-    }
+    // discoverPorts() removed: getClient() now runs the fast path itself
+    // (cached + /proc first, mDNS second, range scan last resort).
 
     private static final String PREF = "adb_shell";
     private static final String PREF_PORT = "wireless_port";
@@ -311,7 +312,7 @@ public class AdbShellController {
                 @Override public void onDiscoveryStopped(String t) {}
             };
             nsd.discoverServices("_adb-tls-connect", NsdManager.PROTOCOL_DNS_SD, l);
-            latch.await(3500, TimeUnit.MILLISECONDS);
+            latch.await(1500, TimeUnit.MILLISECONDS);
             try { nsd.stopServiceDiscovery(l); } catch (Throwable ignored) {}
             if (port.get() > 0) return port.get();
         } catch (Throwable t) {
@@ -339,7 +340,7 @@ public class AdbShellController {
                 @Override public void onDiscoveryStopped(String t) {}
             };
             nsd.discoverServices("_adb-tls-pairing", NsdManager.PROTOCOL_DNS_SD, l);
-            latch.await(3500, TimeUnit.MILLISECONDS);
+            latch.await(1500, TimeUnit.MILLISECONDS);
             try { nsd.stopServiceDiscovery(l); } catch (Throwable ignored) {}
             if (port.get() > 0) return port.get();
         } catch (Throwable t) {
@@ -528,10 +529,10 @@ public class AdbShellController {
             }
         } catch (Throwable ignored) {}
         try (DatagramSocket sock = new DatagramSocket()) {
-            sock.setSoTimeout(2500);
+            sock.setSoTimeout(1000);
             byte[] q = buildPairMdnsQuery();
             sock.send(new DatagramPacket(q, q.length, InetAddress.getByName("224.0.0.251"), 5353));
-            long deadline = System.currentTimeMillis() + 3000;
+            long deadline = System.currentTimeMillis() + 1500;
             while (System.currentTimeMillis() < deadline) {
                 byte[] buf = new byte[4096];
                 DatagramPacket pkt = new DatagramPacket(buf, buf.length);
@@ -601,10 +602,10 @@ public class AdbShellController {
             }
         } catch (Throwable ignored) {}
         try (DatagramSocket sock = new DatagramSocket()) {
-            sock.setSoTimeout(2500);
+            sock.setSoTimeout(1000);
             byte[] q = buildMdnsQuery();
             sock.send(new DatagramPacket(q, q.length, InetAddress.getByName("224.0.0.251"), 5353));
-            long deadline = System.currentTimeMillis() + 3000;
+            long deadline = System.currentTimeMillis() + 1500;
             while (System.currentTimeMillis() < deadline) {
                 byte[] buf = new byte[4096];
                 DatagramPacket pkt = new DatagramPacket(buf, buf.length);
