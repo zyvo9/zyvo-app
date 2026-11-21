@@ -1376,6 +1376,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.startMs = System.currentTimeMillis();
                 if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
+                updateWorkingConflict();
             }
             // the snapshot is authoritative once it is at least as long as the
             // text the deltas already accumulated
@@ -1432,6 +1433,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.startMs = System.currentTimeMillis();
                 if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
+                updateWorkingConflict();
             } else if ("text".equals(ptype)) {
                 resumeTurnIfSettled();
                 finishThoughts();
@@ -2105,6 +2107,39 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 adapter.notifyItemChanged(i);
             }
         }
+        updateWorkingConflict();
+    }
+
+    /**
+     * The Thinking row and the Working row are both turn statuses - showing
+     * them together reads as a conflict (two spinners stacked). While any
+     * thought is streaming the Working row hides; when reasoning ends it comes
+     * back at the BOTTOM of the list so it never sits stale mid-transcript.
+     */
+    private void updateWorkingConflict() {
+        boolean thinking = false;
+        ChatItem working = null;
+        for (ChatItem it : items) {
+            if (it.kind == ChatItem.THOUGHT && it.streaming) thinking = true;
+            if (it.kind == ChatItem.WORKING) working = it;
+        }
+        if (working == null) return;
+        if (thinking && !working.hidden) {
+            working.hidden = true;
+            rebind(working);
+        } else if (!thinking && working.hidden) {
+            working.hidden = false;
+            int idx = items.indexOf(working);
+            if (idx >= 0 && idx != items.size() - 1) {
+                items.remove(idx);
+                adapter.notifyItemRemoved(idx);
+                items.add(working);
+                adapter.notifyItemInserted(items.size() - 1);
+            } else {
+                rebind(working);
+            }
+            scrollIfPinned();
+        }
     }
 
     /** CLI reasoningSummary: the bold first line of the reasoning text. */
@@ -2485,12 +2520,14 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 adapter.notifyItemRemoved(i);
                 items.add(w);
                 adapter.notifyItemInserted(items.size() - 1);
+                updateWorkingConflict();
                 return;
             }
         }
         ChatItem w = ChatItem.working();
         w.startMs = System.currentTimeMillis();
         addItem(w);
+        updateWorkingConflict();
     }
 
     private void rebind(ChatItem item) {

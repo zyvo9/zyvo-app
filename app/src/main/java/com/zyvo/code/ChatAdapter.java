@@ -460,6 +460,14 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     // ------------------------------------------------------------- thought
 
     private void bindWorking(WorkingVH h, ChatItem item) {
+        if (item.hidden) {
+            // the live Thinking row IS the status while reasoning streams - the
+            // generic Working row would fight it (two spinners stacked)
+            h.itemView.setVisibility(View.GONE);
+            h.stopTicker();
+            return;
+        }
+        h.itemView.setVisibility(View.VISIBLE);
         animateIn(h.itemView, item);
         h.startMs = item.startMs > 0 ? item.startMs : System.currentTimeMillis();
         h.baseLabel = ctx.getString(R.string.working_bar);
