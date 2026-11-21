@@ -173,34 +173,51 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         return r == 0 ? m + "m" : m + "m " + r + "s";
     }
 
-    /**
-     * Streamed replies that got new tokens; flushed at most every 40 ms.
-     * ZCode-style linear streaming: text grows with the model's own cadence —
-     * the old reveal tick re-paced the stream on top of it (up to 120 chars per
-     * 16 ms), which made fast lanes read as bursts instead of a live stream.
-     */
-    private final java.util.LinkedHashSet<ChatItem> dirtyReplies = new java.util.LinkedHashSet<>();
-    private boolean replyScheduled;
-    private final Runnable replyFlush = new Runnable() {
+    /** Reveals streamed assistant text a few characters at a time (no jumps). */
+    private boolean revealScheduled;
+    private boolean scrollQueued;
+    private final Runnable revealTick = new Runnable() {
         @Override
         public void run() {
-            replyScheduled = false;
-            if (dirtyReplies.isEmpty()) return;
-            for (ChatItem it : dirtyReplies) {
-                int idx = items.indexOf(it);
-                if (idx >= 0) adapter.notifyItemChanged(idx, ChatAdapter.PAYLOAD_STREAM);
+            revealScheduled = false;
+            boolean active = false;
+            for (int i = 0; i < items.size(); i++) {
+                ChatItem it = items.get(i);
+                if (it.kind != ChatItem.ASSISTANT) continue;
+                if (it.fullText == null || it.shown >= it.fullText.length()) continue;
+                int backlog = it.fullText.length() - it.shown;
+                // steady CLI-like flow: every burst unfolds over ~half a second
+                // instead of popping in at once, and the drain rate accelerates
+                // with the backlog so the reveal never falls behind a fast lane
+                int step = Math.max(2, (int) Math.ceil(backlog / 30.0));
+                // a huge burst (a pasted block, a fast lane) must still unfold as
+                // text, not as one dump: cap the per-tick jump
+                if (step > 120) step = 120;
+                int next = Math.min(it.fullText.length(), it.shown + step);
+                if (backlog > 32) {
+                    // big burst - snap to the next space so words never split
+                    while (next < it.fullText.length()
+                            && !Character.isWhitespace(it.fullText.charAt(next))) {
+                        next++;
+                    }
+                }
+                it.shown = next;
+                it.text = it.fullText.substring(0, next);
+                if (it.shown >= it.fullText.length()) {
+                    // finished: one full bind for markdown, copy button, duration
+                    adapter.notifyItemChanged(i);
+                } else {
+                    // payload bind: only the TextView moves, no re-measure of the row
+                    adapter.notifyItemChanged(i, ChatAdapter.PAYLOAD_STREAM);
+                }
+                active = true;
             }
-            dirtyReplies.clear();
-            scrollIfPinnedThrottled();
+            if (active) {
+                scrollIfPinnedThrottled();
+                startReveal();
+            }
         }
     };
-
-    private void scheduleReplyFlush() {
-        if (replyScheduled) return;
-        replyScheduled = true;
-        ui.postDelayed(replyFlush, 40);
-    }
-    private boolean scrollQueued;
 
     /** Scroll at most every 60 ms while text streams; 60 calls/s made it bounce. */
     private void scrollIfPinnedThrottled() {
@@ -1240,25 +1257,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item = ChatItem.assistant(pid);
                 addItem(item);
             }
-            // the end-of-part snapshot is authoritative, but a longer fullText
-            // already streamed in must never be truncated by it
+            // the end-of-part snapshot is authoritative, but never truncate what
+            // the token deltas already streamed in
             if (text.length() >= item.fullText.length()) item.fullText = text;
             turnAssistantKey = pid;
-            JsonObject ptime = part.has("time") && part.get("time").isJsonObject()
-                    ? part.getAsJsonObject("time") : null;
-            if (ptime != null && num(ptime, "end") > 0) {
-                // part completed - one full bind so markdown, copy and duration land
-                item.streaming = false;
-                item.shown = item.fullText.length();
-                item.text = item.fullText;
+            if (item.shown > item.fullText.length()) item.shown = 0;
+            if (item.shown == 0) item.text = "";
+            startReveal();
+            // while the reveal is behind, let IT render the row: a full rebind
+            // here bypasses the reveal and pops the whole text in at once
+            if (!(item.fullText != null && item.fullText.length() > item.shown)) {
                 rebind(item);
-            } else {
-                // still streaming - render what arrived (throttled), ZCode-style
-                item.streaming = true;
-                item.shown = item.fullText.length();
-                item.text = item.fullText;
-                dirtyReplies.add(item);
-                scheduleReplyFlush();
             }
 
         } else if ("tool".equals(ptype)) {
@@ -1445,14 +1454,8 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             scheduleThoughtFlush();
         } else {
             item.fullText = (item.fullText == null ? "" : item.fullText) + delta;
-            // ZCode-like linear streaming: render what arrived, when it arrived.
-            // The old reveal tick re-paced the stream (up to 120 chars/16 ms),
-            // which made fast lanes read as bursts instead of a live stream.
-            item.streaming = true;
-            item.shown = item.fullText.length();
-            item.text = item.fullText;
-            dirtyReplies.add(item);
-            scheduleReplyFlush();
+            if (item.shown == 0) item.text = "";
+            startReveal();
         }
     }
 
@@ -2133,9 +2136,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         pendingDeltas.clear();
         dirtyThoughts.clear();
         thoughtScheduled = false;
-        ui.removeCallbacks(replyFlush);
-        replyScheduled = false;
-        dirtyReplies.clear();
+        revealScheduled = false;
         adapter.notifyDataSetChanged();
         setBusy(false);
         updateEmpty();
@@ -2158,9 +2159,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         pendingDeltas.clear();
         dirtyThoughts.clear();
         thoughtScheduled = false;
-        ui.removeCallbacks(replyFlush);
-        replyScheduled = false;
-        dirtyReplies.clear();
+        revealScheduled = false;
         adapter.notifyDataSetChanged();
         setBusy(false);
         updateEmpty();
@@ -2599,16 +2598,20 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         });
     }
 
+    private void startReveal() {
+        if (revealScheduled) return; // never postpone a tick that is already queued
+        revealScheduled = true;
+        ui.postDelayed(revealTick, 16);
+    }
+
     /** Shows the remaining text immediately (turn finished). */
     private void flushReveal() {
-        ui.removeCallbacks(replyFlush);
-        replyScheduled = false;
-        dirtyReplies.clear();
+        ui.removeCallbacks(revealTick);
+        revealScheduled = false;
         for (int i = 0; i < items.size(); i++) {
             ChatItem it = items.get(i);
             if (it.kind != ChatItem.ASSISTANT || it.fullText == null) continue;
-            if (it.streaming) {
-                it.streaming = false;
+            if (it.shown < it.fullText.length()) {
                 it.shown = it.fullText.length();
                 it.text = it.fullText;
                 adapter.notifyItemChanged(i);

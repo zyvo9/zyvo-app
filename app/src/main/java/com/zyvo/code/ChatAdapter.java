@@ -201,7 +201,12 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
     /** Cheap path: only the growing text (and the hidden footer) changes. */
     private void bindStreamText(MessageVH h, ChatItem item) {
-        if (item.kind != ChatItem.ASSISTANT || !item.streaming) {
+        if (item.kind != ChatItem.ASSISTANT) {
+            bindMessage(h, item);
+            return;
+        }
+        boolean revealing = item.fullText != null && item.fullText.length() > item.shown;
+        if (!revealing) {
             // stream finished - one full bind so markdown, copy and duration land
             bindMessage(h, item);
             return;
@@ -287,7 +292,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             return;
         }
 
-        boolean revealing = item.streaming && item.kind == ChatItem.ASSISTANT;
+        boolean revealing = item.fullText != null && item.fullText.length() > item.shown;
         if (revealing) {
             // word-by-word reveal: cheap plain text, no markdown re-parse per frame.
             // Markers are stripped so the live view reads clean; the finished text
