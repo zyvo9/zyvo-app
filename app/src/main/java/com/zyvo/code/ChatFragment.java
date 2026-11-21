@@ -181,6 +181,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         public void run() {
             revealScheduled = false;
             boolean active = false;
+            ChatItem finished = null;
             for (int i = 0; i < items.size(); i++) {
                 ChatItem it = items.get(i);
                 if (it.kind != ChatItem.ASSISTANT) continue;
@@ -206,12 +207,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 if (it.shown >= it.fullText.length()) {
                     // finished: one full bind for markdown, copy button, duration
                     adapter.notifyItemChanged(i);
+                    // part already completed: markdown + code-card split land in
+                    // the SAME frame - one end transition, not a re-render later
+                    if (!it.streaming && it.key.equals(turnAssistantKey)) {
+                        finished = it;
+                    }
                 } else {
                     // payload bind: only the TextView moves, no re-measure of the row
                     adapter.notifyItemChanged(i, ChatAdapter.PAYLOAD_STREAM);
                 }
                 active = true;
             }
+            if (finished != null) splitAssistantCode(finished);
             if (active) {
                 scrollIfPinnedThrottled();
                 startReveal();
@@ -1261,6 +1268,19 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // the token deltas already streamed in
             if (text.length() >= item.fullText.length()) item.fullText = text;
             turnAssistantKey = pid;
+            JsonObject ptime = part.has("time") && part.get("time").isJsonObject()
+                    ? part.getAsJsonObject("time") : null;
+            boolean partEnded = ptime != null && num(ptime, "end") > 0;
+            if (partEnded) {
+                // footer duration for the split pieces (markTurnDuration would
+                // miss them once the reply is split into segments + code cards)
+                if (item.durationMs <= 0 && workingStartMs > 0) {
+                    item.durationMs = System.currentTimeMillis() - workingStartMs;
+                }
+                item.streaming = false;
+            } else {
+                item.streaming = true;
+            }
             if (item.shown > item.fullText.length()) item.shown = 0;
             if (item.shown == 0) item.text = "";
             startReveal();
@@ -1268,6 +1288,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // here bypasses the reveal and pops the whole text in at once
             if (!(item.fullText != null && item.fullText.length() > item.shown)) {
                 rebind(item);
+                // ONE end transition: full markdown + code-card split land in
+                // the same frame - the old flow re-rendered everything again at
+                // turn end (markdown first, split second), a visible double pass
+                if (partEnded) splitAssistantCode(item);
             }
 
         } else if ("tool".equals(ptype)) {
