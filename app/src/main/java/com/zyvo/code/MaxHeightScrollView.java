@@ -64,12 +64,32 @@ public class MaxHeightScrollView extends ScrollView {
         int cap = (int) (getResources().getDisplayMetrics().heightPixels * fraction);
         cap = Math.min(maxPx, cap);
 
-        int mode = MeasureSpec.getMode(heightMeasureSpec);
-        int size = MeasureSpec.getSize(heightMeasureSpec);
-        if (mode == MeasureSpec.UNSPECIFIED || size > cap) {
-            heightMeasureSpec = MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST);
+        View child = getChildAt(0);
+        if (child == null) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            return;
         }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+
+        // THE BUG THIS FIXES: capping the CHILD's measure spec (the old code
+        // replaced heightMeasureSpec with AT_MOST(cap) before super) made the
+        // child measure exactly cap-tall too -> child height == viewport ->
+        // NOTHING to scroll and lines past 12 were unreachable. The child must
+        // measure its FULL natural height (UNSPECIFIED); only OUR viewport is
+        // capped - that is what makes the box scrollable.
+        measureChildWithMargins(child, widthMeasureSpec, 0,
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED), 0);
+
+        MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
+        int natural = child.getMeasuredHeight() + getPaddingTop() + getPaddingBottom()
+                + lp.topMargin + lp.bottomMargin;
+        int my = Math.min(natural, cap);
+
+        int w = child.getMeasuredWidth() + getPaddingLeft() + getPaddingRight()
+                + lp.leftMargin + lp.rightMargin;
+        if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED) {
+            w = resolveSize(w, widthMeasureSpec);
+        }
+        setMeasuredDimension(Math.max(w, getSuggestedMinimumWidth()), my);
     }
 
     /** True when the content is taller than the visible cap (used for a hint). */
