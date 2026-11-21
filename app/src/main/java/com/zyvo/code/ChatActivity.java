@@ -32,6 +32,12 @@ public final class ChatActivity extends AppCompatActivity {
 
     private DrawerLayout drawer;
 
+    /** True once the Termux prefix is installed (or install is known-unnecessary).
+     *  The engine must not start before it: doStart() writes usr/bin + usr/etc
+     *  and reads usr/bin/bash for the shell config, and a concurrent writer
+     *  inside files/usr is what made the FIRST bootstrap install fail. */
+    private boolean bootstrapReady;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // Zyvo Code is a dark-first app: force night mode so the Zai dark tokens
@@ -59,10 +65,18 @@ public final class ChatActivity extends AppCompatActivity {
         // ChatActivity is the only launcher, so the stock Termux first-run flow
         // never triggers. Install the bootstrap (files/usr: bash, pkg, apt)
         // ourselves, or the engine's shell is stuck with toybox-only commands.
+        // The engine is gated on it: whenDone fires only after the prefix is
+        // complete, so writeTermuxBrand/writeAdbBridge land in the real prefix
+        // and never race the installer's staging rename.
         try {
-            com.termux.app.TermuxInstaller.setupBootstrapIfNeeded(this, () -> { });
+            com.termux.app.TermuxInstaller.setupBootstrapIfNeeded(this, () -> {
+                bootstrapReady = true;
+                startEngine();
+            });
         } catch (Throwable t) {
             // engine still works on toybox; the log dialog shows what failed
+            bootstrapReady = true;
+            startEngine();
         }
 
         if (savedInstanceState == null) {
@@ -183,8 +197,11 @@ public final class ChatActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         // Also restarts the foreground engine service after the user taps Exit in
-        // the notification and later comes back to the app.
-        startEngine();
+        // the notification and later comes back to the app. On the very first
+        // launch the bootstrap install is still running (whenDone fires later and
+        // calls startEngine itself) - starting now would write into files/usr
+        // while the installer is extracting and break the staging rename.
+        if (bootstrapReady) startEngine();
     }
 
     private ChatFragment chat() {

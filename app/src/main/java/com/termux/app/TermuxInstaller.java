@@ -212,8 +212,24 @@ public final class TermuxInstaller {
 
                     Logger.logInfo(LOG_TAG, "Moving termux prefix staging to prefix directory.");
 
+                    // The zyvo engine writes usr/bin + usr/etc/profile.d on every
+                    // start and is launched while this extraction runs. Anything
+                    // that landed in the prefix since step (4) must go, or the
+                    // staging rename below fails with ENOTEMPTY and first launch
+                    // shows the bootstrap error dialog.
+                    error = FileUtils.deleteFile("termux prefix directory", TERMUX_PREFIX_DIR_PATH, true);
+                    if (error != null) {
+                        showBootstrapErrorDialog(activity, whenDone, Error.getErrorMarkdownString(error));
+                        return;
+                    }
+
                     if (!TERMUX_STAGING_PREFIX_DIR.renameTo(TERMUX_PREFIX_DIR)) {
-                        throw new RuntimeException("Moving termux prefix staging to prefix directory failed");
+                        // One retry: a just-recreated target (engine start race)
+                        // is removed and the rename attempted once more.
+                        FileUtils.deleteFile("termux prefix directory", TERMUX_PREFIX_DIR_PATH, true);
+                        if (!TERMUX_STAGING_PREFIX_DIR.renameTo(TERMUX_PREFIX_DIR)) {
+                            throw new RuntimeException("Moving termux prefix staging to prefix directory failed");
+                        }
                     }
 
                     Logger.logInfo(LOG_TAG, "Bootstrap packages installed successfully.");
