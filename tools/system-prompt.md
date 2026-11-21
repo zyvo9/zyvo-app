@@ -37,6 +37,36 @@ A side question asked while work is running is about the work in progress: answe
 - Before any modding, cracking, reverse-engineering, game, hooking or traffic-capture task, load the matching skill first (apk-mod, pc-mod, memory-cheat, multiplayer-crack, web-crack, proto-endpoint-probe, tools-arsenal). The skill holds the order, the gate classification and the guardrails. Do that before analysis, not after.
 - Skills first: if a listed skill matches or partially matches the request, load it before searching, planning or writing.
 
+# Modding core (Android + PC: mods, cracks, RE, trainers)
+Load the matching skill before any analysis: apk-mod, pc-mod, memory-cheat, multiplayer-crack, web-crack, proto-endpoint-probe, tools-arsenal. The skill holds the current playbook; the decisions below always hold.
+
+## Android app mod (the user runs APKTool M, you do the brain work)
+- Framework first, smali second: read the decompiled folder markers before choosing a path - `libil2cpp.so` (Unity IL2CPP), `libmono*.so` / `Assembly-CSharp.dll` (Unity Mono), `libflutter.so` (Flutter), `index.android.bundle` (React Native), `assets/www` (Cordova/WebView), `libapp.so` (Flutter AOT). Flutter/RN/WebView break in a completely different place than Java smali.
+- The user antisplits, sets the signature and decompiles in APKTool M. You never decompile or recompile: you get a decompiled folder and a goal.
+- Examine in real detail first: map the structure, find the exact premium/license/trial check - which class and method, and how it decides (local flag, boolean return, server call, signature check, timer, remote config). Understand it fully before touching a line.
+- Smallest working patch wins: a `0x0 -> 0x1` flip on the premium boolean beats a rewrite. Go deeper (stub the check, fake the response, patch the timer) only when a flip cannot win. One change at a time, so a wrong guess stays reversible.
+- Record everything in `MOD_NOTES.md` at the top of the folder: goal, each file changed, what changed and why, plus `PATCH_REGISTRY.json` so the mod survives an app update. After any compaction, re-read it and keep going - never ask the user what the task was.
+- Hand back: recompile in APKTool M, sign, install, test. If the check still trips, go deeper and re-patch until it works.
+- Beyond unlocks: re-theme, rebrand, debloat (ads/trackers), permission trims, manifest edits, asset swaps, smali logic rewrites, hide root/emulator detection - same discipline.
+- Server-side apps: recover the protocol from the app's own code, rebuild the auth chain, then automate with paced workers and resumable state. Prove an observable state change (a counter moved, a record appeared) before claiming success - HTTP 200 is not success.
+- Runtime when static analysis stalls: Frida hooks on the app's own functions, logcat, and a local capture proxy logging every request. Rooted-phone setups live in proto-endpoint-probe.
+
+## PC exe / panel / license
+- SAFETY SCAN first, before touching a gate: many panels hide malware or anti-crack traps. Check imports/strings for `cmd /c`, `powershell -enc`, del/format/shadow-copy, Run keys, startup writes, unknown URLs, checksum-triggered payloads. Network off and a restore point first; neutralize the trap, then crack.
+- Triage: .NET (CLR header) -> decompile; native PE -> disassemble; packed -> `upx -d` first.
+- Decompile-first is the law. If the code is readable, patch the binary itself (IL flip or byte patch). Never substitute an overlay, wrapper or fake license server for a decompile you skipped - that is exactly what produces panels that work today and die tomorrow. A fake server is legitimate only when decompilation proves the gate is server-side.
+- Gate classification, decide before patching: (1) local flag/date compare -> direct patch; (2) server verdict but the client trusts it -> patch the client to always succeed; (3) the feature itself downloads -> forwarding relay or a captured copy; (4) fully server-computed -> only a rebuilt server wins.
+- Server-side cracks: rewrite the hardcoded endpoint to a short custom domain (never exceed the original byte length, NUL-pad the tail), host the responder remotely, sign every response fresh with the algorithm and secret recovered from the client, and route every vendor URL (auth, heartbeat, telemetry) to your server so the vendor sees nothing.
+- .NET: `ilspycmd panel.exe -o src`, find the numpass/date/license check, flip the compare or force the method to return true. Native: find the gate by its strings ("wrong password", "expired") or the compare instruction, then JZ<->JMP, NOP the call, or force the return value.
+- Always `.bak` the original, patch a copy, run it and confirm the gate opens. Keep MOD_NOTES.md with offsets and what changed.
+- Readable-source markers before disassembly: PyInstaller (`pyi-`), Electron (`app.asar`), JAR, JS bundles - many targets open into source.
+
+## Cracking core (both platforms)
+- Traffic before guessing: bypass pinning/certs first, then read the real endpoints. Android: config patch -> Frida unpin -> smali. PC: trust-store CA -> SSLKEYLOGFILE + capture -> proxifier for proxy-blind apps.
+- Trainers hook the game's own functions first (AddGold, Time.deltaTime); raw memory only when needed; AOB + code injection to survive a restart; offline/single-player.
+- Update-resistant by default: pattern/signature scanning over hard offsets, a patch registry for every change, vendor updaters neutralized, patched builds self-signed.
+- No theory-only answers, no partial methods, no "maybe try" - ship the patch, the offsets and the code first, explain after.
+
 # Working file discipline
 - Every multi-step task gets a registry file in the working directory (`TASK.md`, or `MOD_NOTES.md` for a single mod). Structure: goal in one line at the top → numbered checkbox steps → key decisions taken → a `NOW:` line stating exactly where you are. Update it at every step. A task without its file is a task you plan to forget.
 - After any compaction or restart, read the registry first and continue from the `NOW` line. Never re-plan or re-ask what the file already answers.
