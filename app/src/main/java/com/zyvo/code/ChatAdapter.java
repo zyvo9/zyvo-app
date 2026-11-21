@@ -657,13 +657,17 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
         boolean hasDiff = add + del > 0;
         if (hasDiff) {
+            h.countItem = null;
             h.diff.setText(diffLabel(add, del));
             h.diff.setVisibility(View.VISIBLE);
-        } else if (item.liveLines > 0) {
+        } else if (item.liveLines > 0 && "running".equals(item.status)) {
+            // the tick climbs the pill (+10 +20 ... toward the real count)
+            h.countItem = item;
             h.diff.setText("+" + item.liveLines);
             h.diff.setTextColor(ContextCompat.getColor(ctx, R.color.ok));
             h.diff.setVisibility(View.VISIBLE);
         } else {
+            h.countItem = null;
             h.diff.setVisibility(View.GONE);
         }
         // the +N −N pill is a real control: tap it to see the actual diff
@@ -1631,6 +1635,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final View gutterSep;
         final android.widget.HorizontalScrollView hscroll;
         private ObjectAnimator spin;
+        /** The running write/edit whose +N pill this holder is climbing. */
+        private ChatItem countItem;
 
         ToolVH(@NonNull View v) {
             super(v);
@@ -1673,7 +1679,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
         @Override
         void onFrame(String frame) {
-            // the arc animates itself - no per-frame text swap any more
+            ChatItem it = countItem;
+            if (it == null || it.targetLines <= 0 || it.liveLines >= it.targetLines) return;
+            // linear climb: +10 +20 +30 ... toward the real line count - the
+            // pill keeps counting while the file streams in (ZCode-style)
+            it.liveLines = Math.min(it.targetLines,
+                    it.liveLines + Math.max(1, it.targetLines / 25));
+            diff.setText("+" + it.liveLines);
         }
 
         @Override

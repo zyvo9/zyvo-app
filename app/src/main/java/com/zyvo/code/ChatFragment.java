@@ -1376,9 +1376,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.content = wContent;
             }
             if (TextUtils.isEmpty(item.diff) && "running".equals(item.status)) {
-                if (!wContent.isEmpty()) item.liveLines = countLines(wContent);
+                if (!wContent.isEmpty()) {
+                    // the +N pill CLIMBS toward the real count (+10 +20 ...) -
+                    // ZCode-style, the card feels alive while the file streams
+                    item.targetLines = countLines(wContent);
+                    if (item.liveLines <= 0) {
+                        item.liveLines = Math.max(1, Math.min(item.targetLines, 8));
+                    }
+                }
             } else if (!TextUtils.isEmpty(item.diff)) {
                 item.liveLines = 0;
+                item.targetLines = 0;
             }
 
             String out = str(state, "output");

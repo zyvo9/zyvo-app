@@ -44,6 +44,8 @@ public final class ChatItem {
     public String diff = "";
     /** Live line count while a write/edit streams (shown as +N before the diff lands). */
     public int liveLines = 0;
+    /** Real line count of the streaming write/edit - the +N pill climbs toward it. */
+    public int targetLines = 0;
     public String title = "";
     /** Fenced-code language tag for CODE rows. */
     public String lang = "";
