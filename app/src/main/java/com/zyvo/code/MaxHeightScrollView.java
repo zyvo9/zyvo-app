@@ -3,10 +3,10 @@ package com.zyvo.code;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.View;
+import android.widget.ScrollView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.widget.NestedScrollView;
 
 /**
  * Scroll container for tool-card bodies.
@@ -14,8 +14,15 @@ import androidx.core.widget.NestedScrollView;
  * A long command output must NOT push the whole chat away: the card keeps a
  * fixed share of the screen and the text scrolls INSIDE it. The cap is derived
  * from the screen height, so it behaves the same on every phone size.
+ *
+ * Deliberately extends the FRAMEWORK ScrollView, not androidx NestedScrollView:
+ * the NestedScrollView class merged into a recent APK carried a broken
+ * constructor (NestedScrollingChildHelper null -> instant InflateException on
+ * every tool card), and these boxes disable nested scrolling anyway
+ * (nestedScrollingEnabled=false in the layouts) so the box claims its own
+ * drags instead of passing them to the chat list.
  */
-public class MaxHeightScrollView extends NestedScrollView {
+public class MaxHeightScrollView extends ScrollView {
 
     /** Share of the screen height the body may take. */
     private float fraction = 0.40f;
@@ -34,7 +41,6 @@ public class MaxHeightScrollView extends NestedScrollView {
         float d = context.getResources().getDisplayMetrics().density;
         maxPx = (int) (330 * d);
         setFillViewport(false);
-        setNestedScrollingEnabled(true);
         setScrollBarDefaultDelayBeforeFade(1200);
     }
 
