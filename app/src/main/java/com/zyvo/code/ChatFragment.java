@@ -83,6 +83,28 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     private TextView composerModel;
     private TextView agentChip;
     private ImageButton scrollBottom;
+    private View taskDock;
+    private View taskDockDot;
+    private TextView taskDockText;
+    private android.animation.ObjectAnimator dockPulse;
+
+    /** Drawer rows fade/rise in with a stagger when the sidebar opens. */
+    private void staggerDrawerItems() {
+        if (!isAdded() || !animationsOn()) return;
+        RecyclerView list2 = getActivity().findViewById(R.id.session_list);
+        if (list2 == null) return;
+        list2.post(() -> {
+            for (int i = 0; i < list2.getChildCount(); i++) {
+                View row = list2.getChildAt(i);
+                row.setAlpha(0f);
+                row.setTranslationY(10f);
+                row.animate().alpha(1f).translationY(0f).setDuration(180)
+                        .setStartDelay(i * 30L)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                        .start();
+            }
+        });
+    }
 
     private EventSource sse;
     private EventSource sseStartedFrom;
@@ -404,6 +426,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         scrollBottom = v.findViewById(R.id.btn_scroll_bottom);
         if (scrollBottom != null) {
             scrollBottom.setOnClickListener(view -> {
+                pinnedToBottom = true;
+                scrollToBottom();
+            });
+        }
+
+        // Grok-style task dock: visible while the agent runs and the user has
+        // scrolled away; tap jumps back to the live transcript.
+        taskDock = v.findViewById(R.id.task_dock);
+        taskDockDot = taskDock == null ? null : taskDock.findViewById(R.id.task_dock_dot);
+        taskDockText = taskDock == null ? null : taskDock.findViewById(R.id.task_dock_text);
+        if (taskDock != null) {
+            taskDock.setOnClickListener(view -> {
                 pinnedToBottom = true;
                 scrollToBottom();
             });
@@ -1855,6 +1889,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         if (value && !wasBusy) retryAttempt = 0;
         ui.removeCallbacks(busyWatchdog);
         ui.removeCallbacks(stallTick);
+        updateTaskDock();
         if (send != null) {
             updateSendIcon();
             send.setContentDescription(getString(value ? R.string.stop : R.string.send));
@@ -2249,6 +2284,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         }
         loadDrawerSessions();
         drawer.openDrawer(GravityCompat.START);
+        staggerDrawerItems();
     }
 
     private DrawerLayout activityDrawer() {
@@ -2822,6 +2858,41 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                         .setInterpolator(new android.view.animation.OvershootInterpolator(1.3f))
                         .start();
             }
+        }
+        updateTaskDock();
+    }
+
+    /** Grok-style task dock: a floating "Running…" pill that appears only when
+     *  the agent works AND the user scrolled away from the live transcript;
+     *  tap jumps back. One status, never fighting the in-list Working row. */
+    private void updateTaskDock() {
+        if (taskDock == null) return;
+        boolean show = busy && !pinnedToBottom && !stopping;
+        boolean visible = taskDock.getVisibility() == View.VISIBLE;
+        if (show == visible) return;
+        if (show) {
+            taskDock.setVisibility(View.VISIBLE);
+            if (animationsOn()) {
+                taskDock.setAlpha(0f);
+                taskDock.setTranslationY(14f);
+                taskDock.animate().alpha(1f).translationY(0f).setDuration(210)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.1f))
+                        .start();
+            } else {
+                taskDock.setAlpha(1f);
+                taskDock.setTranslationY(0f);
+            }
+            if (taskDockDot != null) {
+                dockPulse = android.animation.ObjectAnimator.ofFloat(taskDockDot, View.ALPHA, 1f, 0.35f);
+                dockPulse.setDuration(600);
+                dockPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+                dockPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+                dockPulse.start();
+            }
+        } else {
+            if (dockPulse != null) { dockPulse.cancel(); dockPulse = null; }
+            taskDock.animate().alpha(0f).setDuration(130)
+                    .withEndAction(() -> taskDock.setVisibility(View.GONE)).start();
         }
     }
 

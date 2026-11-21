@@ -203,6 +203,45 @@
             android:src="@drawable/ic_chevron_down"
             android:tint="@color/black"
             android:visibility="gone" />
+
+        <!-- Grok-style task dock: shows while the agent runs AND the user has
+             scrolled away from the live transcript. Tap = jump back. -->
+        <LinearLayout
+            android:id="@+id/task_dock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="12dp"
+            android:alpha="0"
+            android:background="@drawable/bg_task_dock"
+            android:clickable="true"
+            android:elevation="6dp"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/task_dock_dot"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
+                android:background="@drawable/bg_dot_ok" />
+
+            <TextView
+                android:id="@+id/task_dock_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:fontFamily="@font/inter"
+                android:text="@string/running"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+        </LinearLayout>
     </FrameLayout>
 
     <!-- queued message: sent automatically when the running turn ends -->
