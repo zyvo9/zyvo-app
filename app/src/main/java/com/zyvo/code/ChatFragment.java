@@ -186,18 +186,20 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 if (it.kind != ChatItem.ASSISTANT) continue;
                 if (it.fullText == null || it.shown >= it.fullText.length()) continue;
                 int backlog = it.fullText.length() - it.shown;
-                // Steady word-by-word typing pace: the step grows only GENTLY
-                // with the backlog, so the stream reads linear - words appearing
-                // one by one like live typing - and never bursts forward when a
-                // fast lane dumps a big chunk (the old 120-char cap did that).
-                int step = Math.max(2, (int) Math.ceil(backlog / 60.0));
-                if (step > 28) step = 28;
+                // steady CLI-like flow: every burst unfolds over ~half a second
+                // instead of popping in at once, and the drain rate accelerates
+                // with the backlog so the reveal never falls behind a fast lane
+                int step = Math.max(2, (int) Math.ceil(backlog / 30.0));
+                // a huge burst (a pasted block, a fast lane) must still unfold as
+                // text, not as one dump: cap the per-tick jump
+                if (step > 120) step = 120;
                 int next = Math.min(it.fullText.length(), it.shown + step);
-                // every reveal lands on a word boundary - whole words appear,
-                // never mid-word jumps; that is what reads as real-time typing
-                while (next < it.fullText.length()
-                        && !Character.isWhitespace(it.fullText.charAt(next))) {
-                    next++;
+                if (backlog > 32) {
+                    // big burst - snap to the next space so words never split
+                    while (next < it.fullText.length()
+                            && !Character.isWhitespace(it.fullText.charAt(next))) {
+                        next++;
+                    }
                 }
                 it.shown = next;
                 it.text = it.fullText.substring(0, next);
