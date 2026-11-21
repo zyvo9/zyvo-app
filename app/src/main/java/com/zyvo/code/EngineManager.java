@@ -179,10 +179,18 @@ public final class EngineManager {
         root.addProperty("$schema", "https://opencode.ai/config.json");
         root.addProperty("model", prefs.providerId() + "/" + prefs.modelId());
 
-        // The bash tool spawns this shell; in the Termux fork it must be
-        // Termux's bash (Android's /bin/sh has no pkg/apt/PATH).
+        // The bash tool spawns this shell. The engine's shell-env resolution
+        // DROPS Termux vars (PREFIX observed empty inside AI bash on the phone,
+        // which broke pkg's mirror probing and every $PREFIX-relative path), so
+        // point it at the zyvo-bash wrapper that restores the full Termux env
+        // before exec'ing the real bash. Fallback: plain Termux bash.
+        File wrapper = new File(rootDir, "usr/bin/zyvo-bash");
         File termuxBash = new File(rootDir, "usr/bin/bash");
-        if (termuxBash.exists()) root.addProperty("shell", termuxBash.getAbsolutePath());
+        if (wrapper.exists()) {
+            root.addProperty("shell", wrapper.getAbsolutePath());
+        } else if (termuxBash.exists()) {
+            root.addProperty("shell", termuxBash.getAbsolutePath());
+        }
 
         // The engine rotates onto these lanes when a quota wall is hit.
         JsonArray fallback = new JsonArray();
@@ -292,6 +300,39 @@ public final class EngineManager {
             out.setExecutable(true, false);
         } catch (Throwable t) {
             Log.w(TAG, "adb bridge script failed: " + t.getMessage());
+        }
+    }
+
+    /** Installs the AI-shell env wrapper: the engine's shell-env resolution
+     *  drops Termux vars (PREFIX observed EMPTY inside AI bash -> pkg mirror
+     *  probing failed and every $PREFIX path broke). This wrapper restores
+     *  the full Termux environment before exec'ing the real bash. */
+    public void writeAIShell() {
+        try {
+            File prefix = new File(rootDir, "usr");
+            File bin = new File(prefix, "bin");
+            if (!bin.exists() && !bin.mkdirs()) return;
+            StringBuilder sb = new StringBuilder();
+            sb.append("#!/data/data/com.termux/files/usr/bin/sh\n");
+            sb.append("# zyvo-bash - AI shell with the full Termux environment\n");
+            sb.append(": \"${PREFIX:=/data/data/com.termux/files/usr}\"\n");
+            sb.append("export PREFIX\n");
+            sb.append("export PATH=\"$PREFIX/bin:$PATH\"\n");
+            sb.append("export HOME=\"${HOME:-/data/data/com.termux/files/home}\"\n");
+            sb.append("export TMPDIR=\"${TMPDIR:-$PREFIX/tmp}\"\n");
+            sb.append("export LD_LIBRARY_PATH=\"$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n");
+            sb.append("if [ -f \"$PREFIX/lib/libtermux-exec.so\" ]; then\n");
+            sb.append("  export LD_PRELOAD=\"$PREFIX/lib/libtermux-exec.so\"\n");
+            sb.append("fi\n");
+            sb.append("export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8\n");
+            sb.append("exec \"$PREFIX/bin/bash\" \"$@\"\n");
+            File out = new File(bin, "zyvo-bash");
+            try (OutputStream os = new FileOutputStream(out)) {
+                os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            out.setExecutable(true, false);
+        } catch (Throwable t) {
+            Log.w(TAG, "ai shell wrapper failed: " + t.getMessage());
         }
     }
 
@@ -487,6 +528,7 @@ public final class EngineManager {
         ensureDirs();
         writeTermuxBrand();
         writeAdbBridge();
+        writeAIShell();
 
         // A previous instance may still be serving (app restart, service alive).
         if (probeHealth()) {
