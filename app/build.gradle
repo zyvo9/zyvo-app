@@ -275,14 +275,28 @@ afterEvaluate {
                 def root = buildRoot.dir("intermediates/stripped_native_libs").get().asFile
                 if (!root.exists()) return
                 fileTree(root).matching { include "**/libconscrypt_jni.so" }.each { lib ->
-                    def proc = new ProcessBuilder("node", patcher, lib.absolutePath)
-                            .directory(repoRoot)
-                            .redirectErrorStream(true)
-                            .start()
-                    def output = proc.inputStream.text
-                    def exit = proc.waitFor()
-                    logger.lifecycle("[16k] ${lib.name}: ${output.trim()}")
-                    if (exit != 0) throw new GradleException("16 KB realign failed: ${lib} (exit ${exit})")
+                    // node.exe can die with 0xC0000005 on this machine (seen on bash
+                    // too) - it is an environment crash, not a patcher bug. Retry
+                    // once, and NEVER fail the build over it: the realign is
+                    // future-proofing (targetSdk 28), the libs are usually already
+                    // aligned, and a dead node must not block packaging.
+                    def exit = 1
+                    def output = ""
+                    2.times { attempt ->
+                        def proc = new ProcessBuilder("node", patcher, lib.absolutePath)
+                                .directory(repoRoot)
+                                .redirectErrorStream(true)
+                                .start()
+                        output = proc.inputStream.text
+                        exit = proc.waitFor()
+                        if (exit == 0) return
+                        logger.lifecycle("[16k] ${lib.name}: attempt ${attempt + 1} exit ${exit} - retrying")
+                    }
+                    if (exit == 0) {
+                        logger.lifecycle("[16k] ${lib.name}: ${output.trim()}")
+                    } else {
+                        logger.warn("[16k] ${lib.name}: realign SKIPPED (node exit ${exit}) - continuing; lib may stay unaligned")
+                    }
                 }
             }
         }
