@@ -18,15 +18,17 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:ellipsize="end"
+        android:fontFamily="@font/inter"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="13sp" />
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/meta"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="10sp" />
+        android:layout_marginTop="3dp"
+        android:fontFamily="@font/inter"
+        android:textColor="@color/text_disabled"
+        android:textSize="11sp" />
 </LinearLayout>

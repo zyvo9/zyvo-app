@@ -2,6 +2,8 @@ package com.zyvo.code;
 
 import com.termux.R;
 
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -16,6 +18,7 @@ import android.text.style.ForegroundColorSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -86,9 +89,15 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                         builder.codeTextColor(ContextCompat.getColor(ctx, R.color.code_text));
                         builder.codeBackgroundColor(ContextCompat.getColor(ctx, R.color.code_bg));
                         builder.codeTypeface(Typeface.MONOSPACE);
-                        // Grok-style text: headings stay body-size (bold carries
-                        // the hierarchy) instead of the giant default h1/h2
-                        builder.headingTextSizeMultipliers(new float[]{1f, 1f, 1f, 1f, 1f, 1f});
+                        // Grok-ish hierarchy: headings only a step above body, tight
+                        // leading, real space above them instead of giant type
+                        builder.headingTextSizeMultipliers(
+                                new float[]{1.26f, 1.16f, 1.08f, 1.02f, 1f, 1f});
+                        builder.headingBreakHeight(dp(12));
+                        builder.blockQuoteColor(ContextCompat.getColor(ctx, R.color.line));
+                        builder.blockQuoteWidth(dp(2));
+                        builder.bulletWidth(dp(4));
+                        builder.thematicBreakColor(ContextCompat.getColor(ctx, R.color.line));
                         builder.linkColor(ContextCompat.getColor(ctx, R.color.ok));
                     }
                 })
@@ -108,9 +117,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         item.animated = true;
         if (reduceMotion) return;
         v.setAlpha(0f);
-        v.setTranslationY(6f * ctx.getResources().getDisplayMetrics().density);
-        v.animate().alpha(1f).translationY(0f).setDuration(170)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        v.setTranslationY(20f * ctx.getResources().getDisplayMetrics().density);
+        v.animate().alpha(1f).translationY(0f).setDuration(240)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
     }
 
     @Override
@@ -202,9 +211,15 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             bindMessage(h, item);
             return;
         }
-        h.text.setText(plainMarkdown(item.text));
+        h.text.setText(withCaret(plainMarkdown(item.text)));
         if (h.time.getText().length() > 0) h.time.setText("");
         if (h.actions.getVisibility() == View.VISIBLE) h.actions.setVisibility(View.GONE);
+    }
+
+    /** Streaming caret: a block that blinks while tokens arrive. */
+    private static CharSequence withCaret(String s) {
+        if ((System.currentTimeMillis() / 480L) % 2L == 1L) return s;
+        return s == null ? "\u258D" : s + "\u258D";
     }
 
     /** Cheap path for a thinking row: only the live 4-line tail moves. */
@@ -244,6 +259,8 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             bindNotice((NoticeVH) holder, item);
         } else if (holder instanceof ErrorVH) {
             bindError((ErrorVH) holder, item);
+        } else if (holder instanceof CodeVH) {
+            bindCode((CodeVH) holder, item);
         }
     }
 
@@ -280,7 +297,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             // word-by-word reveal: cheap plain text, no markdown re-parse per frame.
             // Markers are stripped so the live view reads clean; the finished text
             // is re-rendered as full markdown (headings, tables, bullets).
-            h.text.setText(plainMarkdown(item.text));
+            h.text.setText(withCaret(plainMarkdown(item.text)));
         } else {
             markwon.setMarkdown(h.text, item.text == null ? "" : item.text);
         }
@@ -288,11 +305,34 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 item.error ? R.color.danger : R.color.text_primary));
 
         boolean hasText = !TextUtils.isEmpty(item.text) && !revealing;
-        h.actions.setVisibility(hasText ? View.VISIBLE : View.GONE);
-        h.time.setText(revealing ? "" : footer(item));
+        // a reply split into several pieces keeps ONE footer (the last piece)
+        boolean showFooter = hasText && !item.noFooter;
+        h.actions.setVisibility(showFooter ? View.VISIBLE : View.GONE);
+        if (showFooter) {
+            // the action row slides up once, the moment the answer stops growing
+            if (!item.actionsAnimated) {
+                item.actionsAnimated = true;
+                if (reduceMotion) {
+                    h.actions.setAlpha(1f);
+                    h.actions.setTranslationY(0f);
+                } else {
+                    h.actions.setAlpha(0f);
+                    h.actions.setTranslationY(6f * ctx.getResources().getDisplayMetrics().density);
+                    h.actions.animate().alpha(1f).translationY(0f).setDuration(170)
+                            .setStartDelay(60)
+                            .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                            .start();
+                }
+            } else {
+                h.actions.setAlpha(1f);
+                h.actions.setTranslationY(0f);
+            }
+        }
+        h.time.setText(revealing || item.noFooter ? "" : footer(item));
 
-        if (hasText) {
+        if (showFooter) {
             h.btnCopy.setOnClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                 ClipboardManager cm = (ClipboardManager)
                         ctx.getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) {
@@ -301,6 +341,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 }
             });
             h.btnRegen.setOnClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                 if (messageActions != null) messageActions.onRegenerate(item);
             });
             h.btnShare.setOnClickListener(v -> shareText(item.text));
@@ -482,6 +523,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
 
         boolean toggleable = !item.streaming && hasBody;
         h.header.setOnClickListener(toggleable ? v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             item.expanded = !item.expanded;
             notifyItemChanged(position);
         } : null);
@@ -534,6 +576,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 ? ctx.getString(R.string.working) : item.text);
         h.chevron.setRotation(item.expanded ? 180f : 0f);
         h.itemView.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             item.expanded = !item.expanded;
             notifyItemChanged(position);
             int p = position + 1;
@@ -611,53 +654,141 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         } else {
             h.diff.setVisibility(View.GONE);
         }
+        // the +N −N pill is a real control: tap it to see the actual diff
+        h.diff.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            if (!TextUtils.isEmpty(item.diff)) item.showDiff = !item.showDiff;
+            item.collapsed = false;
+            item.expanded = true;
+            notifyItemChanged(position);
+        });
 
-        // Body: one code card per row (reference agent IDE).
-        //   bash/read -> plain mono, NO gutter
-        //   write     -> numbered green body (1 2 3)
-        //   edit      -> washed line-numbered diff
+        // Body, Grok-style: a header label (Bash / file name) + copy, then a real
+        // run box "$ command" (shell) or a numbered body (write) or diff (edit).
         boolean isEdit = tool.contains("edit") || tool.contains("patch");
         boolean isWrite = !isEdit && tool.contains("write");
+        boolean isTerminal = isShell(tool, item.command) || tool.contains("bash")
+                || tool.contains("terminal") || tool.contains("shell") || tool.contains("exec");
         String plainOut = item.output == null ? "" : item.output;
 
         CharSequence code = null;
         String payload = "";
         boolean greenEdge = false;
+        int gutterLines = 0;
         if (isEdit && !TextUtils.isEmpty(item.diff)) {
             code = diffSpans(item.diff);
             payload = item.diff;
+        } else if (isWrite && item.showDiff && !TextUtils.isEmpty(item.diff)) {
+            // write row with the +N −N pill flipped: show the diff instead of the file
+            code = diffSpans(item.diff);
+            payload = item.diff;
         } else if (isWrite && !TextUtils.isEmpty(item.content)) {
-            code = numberedBody(item.content, plainOut);
+            // plain editor body; the numbers live in the pinned gutter
+            code = syntaxBlock(item.content);
             payload = item.content;
             greenEdge = true;
+            gutterLines = Math.min(countLines(item.content), 800);
         } else if (!plainOut.isEmpty()) {
+            // running: keep the LAST lines visible (the box scrolls anyway)
             String shown = running && !item.expanded && !item.full
-                    ? tail(plainOut, 8) : plainOut;
+                    ? tail(plainOut, 40) : plainOut;
             code = syntaxBlock(shown);
             payload = plainOut;
+        } else if (isTerminal) {
+            // nothing ran yet - the "$ command" line alone is the card
+            code = "";
+            payload = clean;
         } else if (!clean.isEmpty()) {
             code = syntaxBlock(clean);
             payload = clean;
         }
 
-        // Default MINIMIZED for every status (running included). A failure
-        // auto-opens a short preview so the error is visible without a tap.
-        boolean open = item.expanded || item.full || failed;
-        int maxLines = item.full ? 400 : (item.expanded ? 10 : 8);
+        // the command prompt is shown inside the block, not repeated from the header
+        boolean showCmd = isTerminal && !TextUtils.isEmpty(clean) && !clean.equals(payload);
+
+        // Everything starts COLLAPSED - terminal, write and edit boxes too.
+        // Tap opens the editor box; tap again closes it.
+        boolean open = !item.collapsed && (item.expanded || item.full);
         boolean hasBody = code != null;
+        // open run box: the header keeps the verb, the command lives inside the box
+        h.name.setVisibility(showCmd && open ? View.GONE : View.VISIBLE);
+        boolean wasHidden = h.body.getVisibility() != View.VISIBLE;
         h.body.setVisibility(open && hasBody ? View.VISIBLE : View.GONE);
         h.chevron.setVisibility(hasBody ? View.VISIBLE : View.GONE);
-        h.chevron.setRotation(open ? 180f : 0f);
+        if (reduceMotion) {
+            h.chevron.setRotation(open ? 180f : 0f);
+        } else {
+            h.chevron.animate().rotation(open ? 180f : 0f).setDuration(150)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+        }
 
         if (open && hasBody) {
             h.codeEdge.setVisibility(greenEdge ? View.VISIBLE : View.GONE);
-            h.codeLang.setText(langFor(item));
+            String lang = langFor(item);
+            if (isWrite || isEdit) {
+                // write/edit: the box label is the LANGUAGE; fall back to the file
+                String low = lang == null ? "" : lang.toLowerCase(Locale.ROOT);
+                if (low.isEmpty() || low.equals("write") || low.equals("edit")
+                        || low.equals("patch") || low.equals("wrote") || low.equals("edited")) {
+                    String pth = shortPath(TextUtils.isEmpty(item.label) ? clean : item.label);
+                    if (!pth.isEmpty()) lang = pth;
+                }
+            }
+            h.codeLang.setText(lang);
             h.codeIcon.setImageResource(iconFor(item.toolName, item.command));
-            h.codeText.setText(item.full ? code : capSpans(code, maxLines));
-            h.codeText.setMaxLines(maxLines);
-            h.codeText.setEllipsize(item.full ? null : TextUtils.TruncateAt.END);
+
+            // "$ command" sits inside the block, dim prompt + bright command
+            if (showCmd) {
+                h.cmdLine.setVisibility(View.VISIBLE);
+                h.cmdLine.setText(cmdSpans(clean));
+            } else {
+                h.cmdLine.setVisibility(View.GONE);
+                h.cmdLine.setText("");
+            }
+            boolean hasOut = code != null && code.length() > 0;
+            h.cmdSep.setVisibility(showCmd && hasOut ? View.VISIBLE : View.GONE);
+            h.codeText.setVisibility(hasOut ? View.VISIBLE : View.GONE);
+
+            // pinned line-number gutter (write bodies); the code itself never wraps
+            if (gutterLines > 0) {
+                h.gutter.setVisibility(View.VISIBLE);
+                h.gutterSep.setVisibility(View.VISIBLE);
+                h.gutter.setText(gutterText(gutterLines));
+            } else {
+                h.gutter.setVisibility(View.GONE);
+                h.gutterSep.setVisibility(View.GONE);
+                h.gutter.setText("");
+            }
+
+            // The box keeps a fixed height (~12 code lines): everything else
+            // scrolls inside it, sideways for long lines.
+            CharSequence shown = capSpans(code, 800);
+            if (shown.length() < code.length()) shown = TextUtils.concat(shown, "\n…");
+            h.codeText.setText(shown);
+            h.codeText.setMaxLines(Integer.MAX_VALUE);
+            h.codeText.setEllipsize(null);
+            if (h.hscroll != null) h.hscroll.scrollTo(0, 0);
+            if (h.fade != null) h.fade.setVisibility(View.GONE);
+            h.scroll.post(() -> {
+                int lh = h.codeText.getLineHeight();
+                if (lh > 0) {
+                    // EVERY box keeps the same total height: 12 code lines.
+                    // The "$ command" line lives above the scroll, so its
+                    // height is taken out of the cap.
+                    int cap = 12 * lh + dp(12);
+                    int cmdH = h.cmdLine.getVisibility() == View.VISIBLE
+                            ? h.cmdLine.getHeight() + dp(6) : 0;
+                    h.scroll.setMaxPx(Math.max(dp(48), cap - cmdH));
+                }
+                h.scroll.post(() -> {
+                    if (h.fade != null) h.fade.setVisibility(
+                            h.scroll.canScrollVertically(1) ? View.VISIBLE : View.GONE);
+                });
+            });
+            if (wasHidden && !reduceMotion) fadeBodyIn(h.body);
             final String copy = payload;
             h.codeCopy.setOnClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
                 ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) {
                     cm.setPrimaryClip(ClipData.newPlainText("tool", copy));
@@ -667,22 +798,36 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
 
         h.card.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            // Item 1: Fluid Card Expansion
+            if (h.itemView.getParent() instanceof android.view.ViewGroup) {
+                android.transition.TransitionManager.beginDelayedTransition((android.view.ViewGroup) h.itemView.getParent(), new android.transition.AutoTransition().setDuration(200));
+            }
             nextStage(item);
             notifyItemChanged(position);
+            // a freshly opened body starts at the first line
+            h.scroll.post(() -> h.scroll.scrollTo(0, 0));
         });
+    }
+
+    /** Body reveal: short fade + tiny rise, capped so it never fights scrolling. */
+    private void fadeBodyIn(View body) {
+        if (reduceMotion) {
+            body.setAlpha(1f);
+            body.setTranslationY(0f);
+            return;
+        }
+        body.setAlpha(0f);
+        body.setTranslationY(6f * ctx.getResources().getDisplayMetrics().density);
+        // slight spring: the panel settles instead of just appearing
+        body.animate().alpha(1f).translationY(0f).setDuration(210)
+                .setInterpolator(new android.view.animation.OvershootInterpolator(0.7f)).start();
     }
 
     /** A tool/thought row is hidden while its run-group header is collapsed. */
     private boolean groupCollapsed(int position, int group) {
         if (group == 0) return false;
-        for (int p = position - 1; p >= 0; p--) {
-            ChatItem c = items.get(p);
-            if (c.kind == ChatItem.SUMMARY) {
-                if (c.group == group) return !c.expanded;
-                continue;
-            }
-            if (c.kind != ChatItem.TOOL && c.kind != ChatItem.THOUGHT) break;
-        }
+        // Groups were removed - never hide a row behind a header again.
         return false;
     }
 
@@ -710,8 +855,28 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         return titleFor(item.toolName, item.command);
     }
 
-    private static String extOf(String path) {
+    /** "$ command" with a dim prompt - reads like a real run box, not a code dump. */
+    private CharSequence cmdSpans(String cmd) {
+        SpannableString sp = new SpannableString("$ " + cmd);
+        sp.setSpan(new ForegroundColorSpan(ContextCompat.getColor(ctx, R.color.text_disabled)),
+                0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return sp;
+    }
+
+    /** Box header for a file: last two path segments ("code/ChatAdapter.java"). */
+    private static String shortPath(String path) {
         if (path == null) return "";
+        String p = path.trim().replace('\\', '/');
+        if (p.isEmpty()) return "";
+        int s1 = p.lastIndexOf('/');
+        if (s1 < 0) return p;
+        String file = p.substring(s1 + 1);
+        int s2 = p.lastIndexOf('/', s1 - 1);
+        if (s2 < 0) return file;
+        return p.substring(s2 + 1);
+    }
+
+    private static String extOf(String path) {        if (path == null) return "";
         String p = path.trim();
         int slash = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
         if (slash >= 0) p = p.substring(slash + 1);
@@ -746,17 +911,13 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         return done ? "Used tool" : "Using tool";
     }
 
-    /** 10 lines → everything → closed. */
+    /** Terminal / Write / Edit start open -> full -> closed. Other tools start closed -> open -> full. */
+    /** Two states only: the editor box is closed or open (it scrolls inside). */
     private static void nextStage(ChatItem item) {
-        if (!item.expanded) {
-            item.expanded = true;
-            item.full = false;
-        } else if (!item.full) {
-            item.full = true;
-        } else {
-            item.expanded = false;
-            item.full = false;
-        }
+        boolean open = !item.collapsed && (item.expanded || item.full);
+        item.collapsed = open;
+        item.expanded = !open;
+        item.full = false;
     }
 
     private static int[] diffCounts(String diff) {
@@ -932,38 +1093,17 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         }
     }
 
-    /** IDE-style content body: right-aligned line-number gutter + the written
-     *  file, with the tool output trailing in gray (agent-IDE look). */
-    private CharSequence numberedBody(String content, String trailing) {
-        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
-        int numColor = ContextCompat.getColor(ctx, R.color.ok);
-        int dim = ContextCompat.getColor(ctx, R.color.text_disabled);
-        String[] lines = content.split("\n", -1);
-        int cap = Math.min(lines.length, 400);
-        int numW = String.valueOf(cap).length();
-        for (int i = 0; i < cap; i++) {
-            int start = sb.length();
-            String num = String.valueOf(i + 1);
-            for (int p = num.length(); p < numW; p++) sb.append(' ');
-            sb.append(num).append("  ");
-            sb.setSpan(new ForegroundColorSpan(numColor), start, sb.length(),
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            int tstart = sb.length();
-            sb.append(lines[i]);
-            applySyntax(sb, tstart, sb.length());
-            sb.append('\n');
+    /** "1\n2\n…\nN" for the pinned editor gutter. */
+    private static String gutterText(int lines) {
+        StringBuilder sb = new StringBuilder(lines * 3);
+        for (int i = 1; i <= lines; i++) {
+            if (i > 1) sb.append('\n');
+            sb.append(i);
         }
-        if (!TextUtils.isEmpty(trailing)) {
-            int start = sb.length();
-            sb.append('\n').append(trailing);
-            sb.setSpan(new ForegroundColorSpan(dim), start, sb.length(),
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        return sb;
+        return sb.toString();
     }
 
-    private static int countLines(String s) {
-        if (s == null || s.isEmpty()) return 0;
+    private static int countLines(String s) {        if (s == null || s.isEmpty()) return 0;
         int n = 1;
         for (int i = 0; i < s.length(); i++) if (s.charAt(i) == '\n') n++;
         return n;
@@ -1049,25 +1189,25 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private static int iconFor(String tool, String command) {
         String n = tool == null ? "" : tool.toLowerCase(Locale.ROOT);
         if (n.contains("bash") || n.contains("shell") || n.contains("exec")
-                || n.contains("terminal")) return R.drawable.ic_lc_square_terminal;
-        if (n.contains("todo")) return R.drawable.ic_lc_list_checks;
-        if (n.contains("glob") || n.contains("find")) return R.drawable.ic_lc_folder_search;
+                || n.contains("terminal")) return R.drawable.ic_g_terminal;
+        if (n.contains("todo")) return R.drawable.ic_g_lists;
+        if (n.contains("glob") || n.contains("find")) return R.drawable.ic_g_folder;
         if (n.equals("read") || n.startsWith("read_") || n.endsWith("read")) {
-            return R.drawable.ic_lc_file_text;
+            return R.drawable.ic_g_read_file;
         }
-        if (n.contains("write")) return R.drawable.ic_lc_file_pen;
-        if (n.contains("edit") || n.contains("patch")) return R.drawable.ic_lc_pen_line;
+        if (n.contains("write")) return R.drawable.ic_g_write_file;
+        if (n.contains("edit") || n.contains("patch")) return R.drawable.ic_g_pencil_edit;
         if (n.contains("web") || n.contains("fetch") || n.contains("http")) {
-            return R.drawable.ic_lc_globe;
+            return R.drawable.ic_g_globe;
         }
-        if (n.contains("grep") || n.contains("search")) return R.drawable.ic_lc_search;
-        if (n.contains("diff")) return R.drawable.ic_lc_file_diff;
+        if (n.contains("grep") || n.contains("search")) return R.drawable.ic_g_search;
+        if (n.contains("diff")) return R.drawable.ic_g_code_block;
         if (n.contains("task") || n.contains("agent") || n.contains("subagent")) {
-            return R.drawable.ic_lc_bot;
+            return R.drawable.ic_g_agent;
         }
-        if (n.contains("skill")) return R.drawable.ic_lc_sparkles;
-        if (command != null && !command.isEmpty()) return R.drawable.ic_lc_square_terminal;
-        return R.drawable.ic_lc_wrench;
+        if (n.contains("skill")) return R.drawable.ic_g_sparkle;
+        if (command != null && !command.isEmpty()) return R.drawable.ic_g_terminal;
+        return R.drawable.ic_g_wrench;
     }
 
     // ------------------------------------------------------------ holders
@@ -1266,20 +1406,28 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     /** ChatGPT-style code card: lang label + copy + expand + syntax body. */
     private void bindCode(CodeVH h, ChatItem item) {
         animateIn(h.itemView, item);
-        h.tag.setText("‹/›");
-        h.lang.setText(item.lang.isEmpty() ? "code" : item.lang);
-        h.body.setText(syntaxBlock(item.text));
+        final String lang = item.lang.isEmpty() ? "code" : item.lang;
+        h.lang.setText(lang.toUpperCase(java.util.Locale.US));
+        // Long code scrolls inside a capped card - the row never grows to a full screen.
+        h.body.setText(capSpans(syntaxBlock(item.text), 200));
         h.body.setVisibility(View.VISIBLE);
-        h.body.setMaxLines(14);
+        h.body.setMaxLines(Integer.MAX_VALUE);
         h.body.setEllipsize(null);
+        h.scroll.scrollTo(0, 0);
         h.copy.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
                 cm.setPrimaryClip(ClipData.newPlainText("code", item.text));
                 UiUtil.toast(ctx, ctx.getString(R.string.copied));
             }
         });
-        h.expand.setOnClickListener(v -> showCodeDialog(item.lang.isEmpty() ? "code" : item.lang, item.text));
+        // the expand button is gone: long-press opens the full viewer instead
+        h.body.setOnLongClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            showCodeDialog(lang, item.text);
+            return true;
+        });
     }
 
     /** Full-screen viewer for a long code block (copy available there too). */
@@ -1392,26 +1540,26 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     static final class CodeVH extends RecyclerView.ViewHolder {
-        final TextView tag;
         final TextView lang;
         final ImageView copy;
-        final ImageView expand;
         final TextView body;
+        final MaxHeightScrollView scroll;
 
         CodeVH(@NonNull View v) {
             super(v);
-            tag = v.findViewById(R.id.code_tag);
             lang = v.findViewById(R.id.code_lang);
             copy = v.findViewById(R.id.code_copy);
-            expand = v.findViewById(R.id.code_expand);
             body = v.findViewById(R.id.code_body);
+            scroll = v.findViewById(R.id.code_scroll);
+            if (scroll != null) scroll.setMaxFraction(0.36f);
         }
     }
 
     static final class ToolVH extends TickingVH {
         final View card;
         final View body;
-        final TextView spinner;
+        final MaxHeightScrollView scroll;
+        final ImageView spinner;
         final ImageView icon;
         final TextView label;
         final TextView name;
@@ -1422,11 +1570,19 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final TextView codeLang;
         final ImageButton codeCopy;
         final TextView codeText;
+        final TextView cmdLine;
+        final View cmdSep;
+        final View fade;
+        final TextView gutter;
+        final View gutterSep;
+        final android.widget.HorizontalScrollView hscroll;
+        private ObjectAnimator spin;
 
         ToolVH(@NonNull View v) {
             super(v);
             card = v.findViewById(R.id.tool_card);
             body = v.findViewById(R.id.tool_body);
+            scroll = v.findViewById(R.id.tool_scroll);
             spinner = v.findViewById(R.id.tool_spinner);
             icon = v.findViewById(R.id.tool_icon);
             label = v.findViewById(R.id.tool_label);
@@ -1438,12 +1594,48 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             codeLang = v.findViewById(R.id.code_lang);
             codeCopy = v.findViewById(R.id.code_copy);
             codeText = v.findViewById(R.id.code_text);
-            spinner.setText(ChatAdapter.FRAMES[0]);
+            cmdLine = v.findViewById(R.id.cmd_line);
+            cmdSep = v.findViewById(R.id.cmd_sep);
+            fade = v.findViewById(R.id.body_fade);
+            gutter = v.findViewById(R.id.code_gutter);
+            gutterSep = v.findViewById(R.id.gutter_sep);
+            hscroll = v.findViewById(R.id.code_hscroll);
+            // Taps INSIDE the box must never bubble up to the card's toggle:
+            // tapping the code (to read / to start a drag) used to CLOSE the box,
+            // which looked exactly like "scroll kaj kore na".
+            body.setOnClickListener(o -> { /* swallow */ });
+            body.setClickable(true);
+            // the fade only belongs on screen while there is more to scroll to
+            // (View#setOnScrollChangeListener needs API 23; older devices just keep
+            // the post-bind refresh below)
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                scroll.setOnScrollChangeListener((android.view.View.OnScrollChangeListener)
+                        (view, x, y, oldX, oldY) -> {
+                            if (fade != null) fade.setVisibility(
+                                    scroll.canScrollVertically(1) ? View.VISIBLE : View.GONE);
+                        });
+            }
         }
 
         @Override
         void onFrame(String frame) {
-            spinner.setText(frame);
+            // the arc animates itself - no per-frame text swap any more
+        }
+
+        @Override
+        void startTicker() {
+            if (spin == null) {
+                spin = ObjectAnimator.ofFloat(spinner, View.ROTATION, 0f, 360f);
+                spin.setDuration(900);
+                spin.setRepeatCount(ValueAnimator.INFINITE);
+                spin.setInterpolator(new LinearInterpolator());
+            }
+            if (!spin.isStarted()) spin.start();
+        }
+
+        @Override
+        void stopTicker() {
+            if (spin != null && spin.isStarted()) spin.cancel();
         }
     }
 }

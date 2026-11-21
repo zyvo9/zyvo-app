@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Tool row (reference: agent-IDE code cards).
-     DEFAULT COLLAPSED: one header line for every status. Tap opens the body:
-       bash/read -> plain mono output, NO line numbers
-       write     -> numbered green body (1 2 3)
-       edit      -> washed line-numbered diff (+N -N after the file name) -->
+<!-- Tool row (Grok-style run box / file box).
+     Header line (always): [icon] verb  +N -N  target            [chevron]
+     Body (tap to open):
+       shell  -> "Bash" label + copy, then  "$ command"  hairline  output
+       write  -> file name label + copy, then numbered body (1 2 3)
+       edit   -> file name label + copy, then washed line-numbered diff
+     The body NEVER grows past ~40% of the screen: tool_scroll caps it and the
+     rest scrolls INSIDE the card (bottom fade hints that more is below). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:animateLayoutChanges="true"
     android:orientation="vertical"
     android:paddingStart="8dp"
     android:paddingEnd="12dp"
@@ -18,14 +20,13 @@
         android:id="@+id/tool_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_tool_card"
         android:clickable="true"
         android:focusable="true"
         android:orientation="vertical"
-        android:paddingStart="10dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp">
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -45,18 +46,16 @@
                     android:layout_height="16dp"
                     android:layout_gravity="center"
                     android:contentDescription="@null"
-                    android:src="@drawable/ic_lc_square_terminal"
+                    android:src="@drawable/ic_g_terminal"
                     android:tint="@color/text_secondary" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/tool_spinner"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
                     android:layout_gravity="center"
-                    android:fontFamily="monospace"
-                    android:text="⠋"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_spinner_arc"
                     android:visibility="gone" />
             </FrameLayout>
 
@@ -141,15 +140,15 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
                         android:paddingStart="9dp"
-                        android:paddingEnd="3dp"
-                        android:paddingTop="1dp">
+                        android:paddingEnd="4dp"
+                        android:paddingTop="2dp">
 
                         <ImageView
                             android:id="@+id/code_icon"
                             android:layout_width="12dp"
                             android:layout_height="12dp"
                             android:contentDescription="@null"
-                            android:src="@drawable/ic_lc_square_terminal"
+                            android:src="@drawable/ic_g_terminal"
                             android:tint="@color/text_disabled" />
 
                         <TextView
@@ -158,6 +157,8 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="6dp"
                             android:layout_weight="1"
+                            android:ellipsize="middle"
+                            android:fontFamily="monospace"
                             android:maxLines="1"
                             android:text="Bash"
                             android:textColor="@color/text_disabled"
@@ -165,30 +166,115 @@
 
                         <ImageButton
                             android:id="@+id/code_copy"
-                            android:layout_width="30dp"
-                            android:layout_height="30dp"
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:contentDescription="@string/copy"
-                            android:padding="7dp"
+                            android:padding="9dp"
                             android:scaleType="fitCenter"
-                            android:src="@drawable/ic_lc_copy"
+                            android:src="@drawable/ic_g_copy"
                             android:tint="@color/text_secondary" />
                     </LinearLayout>
 
+                    <!-- the actual "run box" line: $ command -->
                     <TextView
-                        android:id="@+id/code_text"
+                        android:id="@+id/cmd_line"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="9dp"
+                        android:layout_marginEnd="9dp"
+                        android:layout_marginBottom="6dp"
                         android:fontFamily="monospace"
                         android:lineSpacingExtra="2dp"
-                        android:paddingStart="9dp"
-                        android:paddingEnd="9dp"
-                        android:paddingTop="1dp"
-                        android:paddingBottom="9dp"
-                        android:textColor="@color/code_text"
-                        android:textColorHighlight="@color/select_blue"
-                        android:textIsSelectable="true"
-                        android:textSize="11sp" />
+                        android:textColor="@color/text_primary"
+                        android:textIsSelectable="false"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <View
+                        android:id="@+id/cmd_sep"
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="9dp"
+                        android:layout_marginEnd="9dp"
+                        android:layout_marginBottom="6dp"
+                        android:background="@color/line"
+                        android:visibility="gone" />
+
+                    <FrameLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <!-- fixed ~12-line editor box: line-number gutter pinned left,
+                             code never wraps - long lines run to the right and the
+                             box scrolls sideways, the body scrolls down. -->
+                        <com.zyvo.code.MaxHeightScrollView
+                            android:id="@+id/tool_scroll"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:nestedScrollingEnabled="false">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/code_gutter"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="monospace"
+                                    android:gravity="end"
+                                    android:lineSpacingExtra="3dp"
+                                    android:minWidth="30dp"
+                                    android:paddingStart="8dp"
+                                    android:paddingEnd="7dp"
+                                    android:textColor="@color/ok"
+                                    android:textSize="11sp"
+                                    android:visibility="gone" />
+
+                                <View
+                                    android:id="@+id/gutter_sep"
+                                    android:layout_width="1dp"
+                                    android:layout_height="match_parent"
+                                    android:background="@color/line"
+                                    android:visibility="gone" />
+
+                                <HorizontalScrollView
+                                    android:id="@+id/code_hscroll"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:overScrollMode="never"
+                                    android:scrollbars="none">
+
+                                    <TextView
+                                        android:id="@+id/code_text"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:fontFamily="monospace"
+                                        android:lineSpacingExtra="3dp"
+                                        android:paddingStart="9dp"
+                                        android:paddingEnd="14dp"
+                                        android:paddingBottom="4dp"
+                                        android:scrollHorizontally="true"
+                                        android:textColor="@color/code_text"
+                                        android:textColorHighlight="@color/select_blue"
+                                        android:textIsSelectable="false"
+                                        android:textSize="11sp" />
+                                </HorizontalScrollView>
+                            </LinearLayout>
+                        </com.zyvo.code.MaxHeightScrollView>
+
+                        <!-- soft fade: tells the eye there is more below (scroll only) -->
+                        <View
+                            android:id="@+id/body_fade"
+                            android:layout_width="match_parent"
+                            android:layout_height="20dp"
+                            android:layout_gravity="bottom"
+                            android:background="@drawable/bg_body_fade"
+                            android:visibility="gone" />
+                    </FrameLayout>
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>

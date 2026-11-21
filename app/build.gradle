@@ -252,3 +252,41 @@ afterEvaluate {
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
     }
 }
+
+// --- 16 KB page-size compatibility (Android 15+ devices) -------------------
+// conscrypt-android:2.5.2 ships a prebuilt libconscrypt_jni.so whose PT_LOAD
+// segments are still 4 KB aligned. Such libraries refuse to load on 16 KB
+// kernels and the APK Analyzer flags the whole APK. Realign the packaged copy
+// right after the strip step (tools/patch-16k-elf.js only moves file offsets
+// and sets p_align to 16384 - section contents stay byte-identical).
+afterEvaluate {
+    // projectDir inside app/build.gradle points at <repo>/app, the patcher lives
+    // in the repo root tools/ folder -> resolve it against rootProject.
+    def repoRoot = rootProject.projectDir
+    def patcher = new File(repoRoot, "tools/patch-16k-elf.js").absolutePath
+    def buildRoot = layout.buildDirectory
+    android.applicationVariants.all { variant ->
+        def tag = variant.name.substring(0, 1).toUpperCase() + variant.name.substring(1)
+        def stripTask = tasks.findByName("strip${tag}DebugSymbols")
+        def packageTask = tasks.findByName("package${tag}")
+        if (packageTask == null) return
+        def realign = tasks.register("realignConscrypt16k${tag}") {
+            doLast {
+                def root = buildRoot.dir("intermediates/stripped_native_libs").get().asFile
+                if (!root.exists()) return
+                fileTree(root).matching { include "**/libconscrypt_jni.so" }.each { lib ->
+                    def proc = new ProcessBuilder("node", patcher, lib.absolutePath)
+                            .directory(repoRoot)
+                            .redirectErrorStream(true)
+                            .start()
+                    def output = proc.inputStream.text
+                    def exit = proc.waitFor()
+                    logger.lifecycle("[16k] ${lib.name}: ${output.trim()}")
+                    if (exit != 0) throw new GradleException("16 KB realign failed: ${lib} (exit ${exit})")
+                }
+            }
+        }
+        if (stripTask != null) realign.configure { dependsOn(stripTask) }
+        packageTask.dependsOn(realign)
+    }
+}

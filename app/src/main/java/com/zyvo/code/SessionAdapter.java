@@ -121,6 +121,27 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
             super(v);
             title = v.findViewById(R.id.title);
             meta = v.findViewById(R.id.meta);
+            // soft press: the row dips while a finger is down and springs back
+            float scale = android.provider.Settings.Global.getFloat(v.getContext().getContentResolver(),
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);
+            if (scale != 0f) {
+                v.setOnTouchListener((view, ev) -> {
+                    int a = ev.getAction();
+                    if (a == android.view.MotionEvent.ACTION_DOWN) {
+                        view.animate().cancel();
+                        view.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                .start();
+                    } else if (a == android.view.MotionEvent.ACTION_UP
+                            || a == android.view.MotionEvent.ACTION_CANCEL) {
+                        view.animate().cancel();
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(160)
+                                .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                                .start();
+                    }
+                    return false;
+                });
+            }
         }
     }
 }

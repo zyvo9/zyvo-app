@@ -3,9 +3,9 @@
      subtle cards, green/red diff washes, mono inline-code chips). -->
 <resources>
     <!-- base surfaces -->
-    <color name="bg">#0F0F10</color>
+    <color name="bg">#0B0B0F</color>
     <color name="bg_alt">#0A0A0B</color>
-    <color name="header">#0F0F10</color>
+    <color name="header">#0B0B0F</color>
     <color name="panel">#17181A</color>
     <color name="card">#17181A</color>
     <color name="card_alt">#1F2023</color>
@@ -45,12 +45,24 @@
     <color name="warn_bg">#201810</color>
 
     <!-- chat / code -->
-    <color name="user_bubble">#1C1D20</color>
+    <color name="user_bubble">#1E1E24</color>
     <color name="code_bg">#1A1A1A</color>
     <color name="code_text">#C9CDD3</color>
     <color name="terminal_bg">#000000</color>
     <color name="terminal_fg">#FFFFFF</color>
     <color name="terminal_cursor">#E8A33D</color>
+
+    <!-- chat chrome (2026-11-18 redesign) -->
+    <color name="header_line">#1A1A22</color>
+    <color name="agent_muted">#8E8EA0</color>
+    <color name="input_bg">#16161E</color>
+    <color name="input_line">#262630</color>
+    <color name="chip_bg">#1A1A20</color>
+    <color name="chip_text">#C9C9D1</color>
+    <color name="body_text">#E4E4EB</color>
+    <color name="watermark_tint">#17171D</color>
+    <color name="logo_chip">#15151A</color>
+    <color name="drawer_bg">#101014</color>
 
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>

@@ -7,7 +7,7 @@
     android:orientation="vertical"
     android:paddingStart="18dp"
     android:paddingEnd="18dp"
-    android:paddingTop="8dp"
+    android:paddingTop="10dp"
     android:paddingBottom="4dp">
 
     <TextView
@@ -15,11 +15,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fontFamily="@font/inter"
-        android:lineSpacingExtra="6dp"
-        android:textColor="@color/text_primary"
+        android:lineSpacingExtra="7dp"
+        android:textColor="@color/body_text"
         android:textColorHighlight="@color/select_blue"
             android:textIsSelectable="true"
-        android:textSize="16sp" />
+        android:textSize="15sp" />
 
     <LinearLayout
         android:id="@+id/actions"
@@ -37,7 +37,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/copy"
             android:padding="9dp"
-            android:src="@drawable/ic_lc_copy"
+            android:src="@drawable/ic_g_copy"
             android:tint="@color/text_secondary" />
 
         <ImageButton
@@ -48,7 +48,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/regenerate"
             android:padding="9dp"
-            android:src="@drawable/ic_lc_refresh"
+            android:src="@drawable/ic_g_refresh"
             android:tint="@color/text_secondary" />
 
         <ImageButton

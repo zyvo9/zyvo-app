@@ -51,7 +51,13 @@ public final class ChatItem {
     public boolean hidden = false;
     /** Entrance animation already played for this row. */
     public boolean animated = false;
+    /** The reply action row (copy/regenerate/share) has already slid in. */
+    public boolean actionsAnimated = false;
+    /** Reply split into text + code cards: only the LAST text piece keeps the
+     *  copy/regen footer, otherwise every piece showed its own action row. */
+    public boolean noFooter = false;
     public boolean expanded = false;
+    public boolean collapsed = false;
     public boolean full = false;
     /** The "$ command" box shows the whole command, not the 120-char preview. */
     public boolean cmdExpanded = false;

@@ -1,58 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ZCode "Zai" light theme tokens (extracted from the ZCode desktop app). -->
+<!-- Dark palette (Zai dark tokens - default for both light & night configurations). -->
 <resources>
     <!-- base surfaces -->
-    <color name="bg">#F8F8F8</color>
-    <color name="bg_alt">#F0F0F0</color>
-    <color name="header">#FFFFFF</color>
-    <color name="panel">#FFFFFF</color>
-    <color name="card">#FFFFFF</color>
-    <color name="card_alt">#F8F8F8</color>
-    <color name="tool_bg">#F2F2F2</color>
-    <color name="markdown_code">#EDEDED</color>
-    <color name="surface">#0D0D0D0D</color>
-    <color name="surface_hover">#0D0D0D14</color>
-    <color name="selected">#0D0D0D0D</color>
+    <color name="bg">#0B0B0F</color>
+    <color name="bg_alt">#0A0A0B</color>
+    <color name="header">#0B0B0F</color>
+    <color name="panel">#17181A</color>
+    <color name="card">#17181A</color>
+    <color name="card_alt">#1F2023</color>
+    <color name="tool_bg">#17181A</color>
+    <color name="markdown_code">#121315</color>
+    <color name="surface">#14FFFFFF</color>
+    <color name="surface_hover">#1FFFFFFF</color>
+    <color name="selected">#1FFFFFFF</color>
 
     <!-- text -->
-    <color name="text_primary">#262626</color>
-    <color name="text_secondary">#99262626</color>
-    <color name="text_disabled">#66262626</color>
-    <color name="text_inverse">#FFFFFF</color>
-    <color name="link">#2563EB</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9A9CA3</color>
+    <color name="text_disabled">#6B7075</color>
+    <color name="text_faint">#4A4A4A</color>
+    <color name="text_inverse">#000000</color>
+    <color name="link">#E8A33D</color>
 
     <!-- borders -->
-    <color name="line">#1A0D0D0D</color>
-    <color name="line_strong">#260D0D0D</color>
+    <color name="line">#262626</color>
+    <color name="line_strong">#333333</color>
 
     <!-- brand / actions -->
-    <color name="accent">#262626</color>
-    <color name="accent_dark">#000000</color>
-    <color name="accent_container">#EBF4FF</color>
-    <color name="accent_on_container">#262626</color>
-    <color name="primary">#000000</color>
-    <color name="on_primary">#FFFFFF</color>
-    <color name="secondary">#E6E6E6</color>
-    <color name="secondary_text">#262626</color>
+    <color name="accent">#E8A33D</color>
+    <color name="accent_dark">#FFC27A</color>
+    <color name="accent_container">#262626</color>
+    <color name="accent_on_container">#E8A33D</color>
+    <color name="primary">#E8A33D</color>
+    <color name="on_primary">#000000</color>
+    <color name="secondary">#1A1A1A</color>
+    <color name="secondary_text">#D9B45A</color>
 
     <!-- status -->
-    <color name="danger">#E03131</color>
-    <color name="danger_surface">#1AE03131</color>
-    <color name="ok">#059669</color>
-    <color name="warn">#B54708</color>
-    <color name="warn_bg">#FFF4E5</color>
+    <color name="danger">#FF6B6B</color>
+    <color name="danger_surface">#29FF6B6B</color>
+    <color name="ok">#7FD88F</color>
+    <color name="warn">#F5A742</color>
+    <color name="warn_bg">#201810</color>
 
     <!-- chat / code -->
-    <color name="user_bubble">#0D0D0D0D</color>
-    <color name="code_bg">#0D0D0D08</color>
-    <color name="code_text">#262626</color>
-    <color name="terminal_bg">#F8F8F8</color>
-    <color name="terminal_fg">#262626</color>
-    <color name="terminal_cursor">#0D0D0D</color>
+    <color name="user_bubble">#1E1E24</color>
+    <color name="code_bg">#1A1A1A</color>
+    <color name="code_text">#C9CDD3</color>
+    <color name="terminal_bg">#000000</color>
+    <color name="terminal_fg">#FFFFFF</color>
+    <color name="terminal_cursor">#E8A33D</color>
+
+    <!-- chat chrome (2026-11-18 redesign) -->
+    <color name="header_line">#1A1A22</color>
+    <color name="agent_muted">#8E8EA0</color>
+    <color name="input_bg">#16161E</color>
+    <color name="input_line">#262630</color>
+    <color name="chip_bg">#1A1A20</color>
+    <color name="chip_text">#C9C9D1</color>
+    <color name="body_text">#E4E4EB</color>
+    <color name="watermark_tint">#17171D</color>
+    <color name="logo_chip">#15151A</color>
+    <color name="drawer_bg">#101014</color>
 
     <color name="ic_launcher_background">#111111</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
-    <color name="text_faint">#4A4A4A</color>
     <color name="select_blue">#405C9EE8</color>
 </resources>

@@ -190,6 +190,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 // instead of popping in at once, and the drain rate accelerates
                 // with the backlog so the reveal never falls behind a fast lane
                 int step = Math.max(2, (int) Math.ceil(backlog / 30.0));
+                // a huge burst (a pasted block, a fast lane) must still unfold as
+                // text, not as one dump: cap the per-tick jump
+                if (step > 120) step = 120;
                 int next = Math.min(it.fullText.length(), it.shown + step);
                 if (backlog > 32) {
                     // big burst - snap to the next space so words never split
@@ -320,8 +323,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             ui.postDelayed(this, 5000L);
         }
     };
-    private final Runnable reconnect = () -> {
-        if (isAdded() && engine != null && engine.isReady()) connectStream();
+    /** A reply arrived: the "waiting for the model" banner is no longer true. */
+    private void clearStallBanner() {
+        lastSignalMs = System.currentTimeMillis();
+        if (!stallWarned) return;
+        stallWarned = false;
+        if (banner != null && banner.getVisibility() == View.VISIBLE) {
+            banner.setVisibility(View.GONE);
+        }
+    }
+
+    private final Runnable reconnect = () -> {        if (isAdded() && engine != null && engine.isReady()) connectStream();
     };
 
     @Nullable
@@ -336,6 +348,17 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         prefs = new Prefs(requireContext());
         engine = EngineManager.get(requireContext());
         api = new ApiClient(engine.workspaceDir.getAbsolutePath(), prefs);
+
+        // Item 4: Smooth Keyboard Slide
+        androidx.core.view.ViewCompat.setWindowInsetsAnimationCallback(v, 
+            new androidx.core.view.WindowInsetsAnimationCompat.Callback(androidx.core.view.WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_STOP) {
+            @NonNull
+            @Override
+            public androidx.core.view.WindowInsetsCompat onProgress(@NonNull androidx.core.view.WindowInsetsCompat insets, @NonNull java.util.List<androidx.core.view.WindowInsetsAnimationCompat> runningAnimations) {
+                if (pinnedToBottom) scrollIfPinned();
+                return insets;
+            }
+        });
 
         list = v.findViewById(R.id.list);
         input = v.findViewById(R.id.input);
@@ -463,6 +486,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         v.findViewById(R.id.chip3).setOnClickListener(chipClick);
 
         send.setOnClickListener(view -> {
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
             if (busy) {
                 String typed = input.getText().toString().trim();
                 if (!TextUtils.isEmpty(typed)) {
@@ -491,7 +515,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             return false;
         });
 
-        v.findViewById(R.id.btn_new).setOnClickListener(view -> newSession());
+        // the header new-chat button only exists in the classic top bar layout
+        View newBtn = v.findViewById(R.id.btn_new);
+        if (newBtn != null) newBtn.setOnClickListener(view -> newSession());
         v.findViewById(R.id.btn_sessions).setOnClickListener(view -> openSessionsDrawer());
 
         // voice input: system speech recognizer fills the composer
@@ -510,10 +536,24 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             }
         });
 
-        // send button: tiny press feedback (Grok keeps the composer calm)
+        // Item 2: Spring Touch Physics (Bouncy response)
         if (send != null) send.setOnTouchListener((view, ev) -> {
-            float s = ev.getAction() == MotionEvent.ACTION_DOWN ? 0.9f : 1f;
-            view.animate().scaleX(s).scaleY(s).setDuration(90).start();
+            if (ev.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                view.animate().cancel();
+                view.animate().scaleX(0.88f).scaleY(0.88f).setDuration(80)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+            } else if (ev.getAction() == android.view.MotionEvent.ACTION_UP || ev.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                // spring back with a small overshoot: 0.88 -> 1.06 -> 1.0
+                view.animate().cancel();
+                view.animate().scaleX(1.06f).scaleY(1.06f).setDuration(110)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                        .withEndAction(() -> view.animate().scaleX(1.0f).scaleY(1.0f)
+                                .setDuration(140)
+                                .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f))
+                                .start())
+                        .start();
+            }
             return false;
         });
         bannerAction.setOnClickListener(view -> {
@@ -1203,6 +1243,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     private void handlePart(JsonObject part) {
+        clearStallBanner();
         String sid = str(part, "sessionID");
         if (!mine(sid)) return;
         lastSignalMs = System.currentTimeMillis();
@@ -1284,29 +1325,9 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 addItem(item);
             }
 
-            // ---- Run group: the first tool of a working batch opens ONE
-            // collapsible header; every tool row (and the thinking that led to
-            // it) joins that group until the assistant replies.
-            if (item.group == 0) {
-                if (batchCard == null) {
-                    int idx = items.indexOf(item);
-                    int at = idx;
-                    while (at > 0 && items.get(at - 1).kind == ChatItem.THOUGHT
-                            && items.get(at - 1).group == 0) at--;
-                    batchCard = ChatItem.summary(++groupSeq);
-                    batchCard.expanded = true;
-                    items.add(at, batchCard);
-                    byKey.put(batchCard.key, batchCard);
-                    for (int p = at + 1; p < items.size(); p++) {
-                        ChatItem c = items.get(p);
-                        if (c.kind == ChatItem.THOUGHT && c.group == 0) c.group = batchCard.group;
-                    }
-                    adapter.notifyItemInserted(at);
-                }
-                item.group = batchCard.group;
-                countTool(item);
-                updateBatchHeader();
-            }
+            // Tool rows are NOT grouped any more (user: the "Ran N commands"
+            // header folded everything away and left dead space). Every command
+            // now sits in the transcript as its own card.
 
             item.toolName = toolName;
             item.status = str(state, "status");
@@ -1352,9 +1373,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // a long silent command must not trip the 180s watchdog
             ui.removeCallbacks(busyWatchdog);
             ui.postDelayed(busyWatchdog, 180_000L);
-            if (!TextUtils.isEmpty(item.status)) {
-                setBusy(!"error".equals(item.status) && "running".equals(item.status));
-            }
             rebind(item);
         } else if ("reasoning".equals(ptype)) {
             String text = str(part, "text");
@@ -1370,7 +1388,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.startMs = System.currentTimeMillis();
                 if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
-                removeWorking();
             }
             // the snapshot is authoritative once it is at least as long as the
             // text the deltas already accumulated
@@ -1395,6 +1412,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     /** One streamed chunk of reasoning or answer text. */
     private void handlePartDelta(JsonObject props) {
+        clearStallBanner();
         String sid = str(props, "sessionID");
         if (!mine(sid)) return;
         String pid = str(props, "partID");
@@ -1425,7 +1443,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 item.startMs = System.currentTimeMillis();
                 if (batchCard != null) item.group = batchCard.group;
                 addItem(item);
-                removeWorking();
             } else if ("text".equals(ptype)) {
                 finishThoughts();
                 item = ChatItem.assistant(pid);
@@ -1754,7 +1771,25 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         // while a task runs the button stays the stop square for the whole turn;
         // typing + click still queues the message (see the send click handler)
         boolean showArrow = !busy;
-        send.setImageResource(showArrow ? R.drawable.ic_arrow_up : R.drawable.ic_stop);
+        int newRes = showArrow ? R.drawable.ic_arrow_up : R.drawable.ic_stop;
+
+        if (send.getTag() == null || !send.getTag().equals(newRes)) {
+            send.setTag(newRes);
+            if (animationsOn()) {
+                // absolute rotation, never rotationBy: a cancelled animation used
+                // to leave the arrow stuck at a random angle ("ulti" send button)
+                send.animate().cancel();
+                send.animate().rotation(0f).alpha(0.3f).setDuration(100).withEndAction(() -> {
+                    send.setRotation(0f);
+                    send.setImageResource(newRes);
+                    send.animate().alpha(1.0f).setDuration(100).start();
+                }).start();
+            } else {
+                send.setRotation(0f);
+                send.animate().cancel();
+                send.setImageResource(newRes);
+            }
+        }
         send.setContentDescription(getString(showArrow ? R.string.send : R.string.stop));
     }
 
@@ -2486,6 +2521,18 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     .setInterpolator(new android.view.animation.DecelerateInterpolator())
                     .start();
         }
+
+        // Item 5: Breathing Empty State
+        android.animation.ObjectAnimator scaleX = android.animation.ObjectAnimator.ofFloat(emptyView, android.view.View.SCALE_X, 1f, 1.03f, 1f);
+        android.animation.ObjectAnimator scaleY = android.animation.ObjectAnimator.ofFloat(emptyView, android.view.View.SCALE_Y, 1f, 1.03f, 1f);
+        scaleX.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        scaleY.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        scaleX.setDuration(6000);
+        scaleY.setDuration(6000);
+        scaleX.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        scaleY.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        scaleX.start();
+        scaleY.start();
     }
 
     /** One underline, sliding under the tab that was tapped. */
@@ -2522,7 +2569,14 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 return;
             }
             int dy = last.getBottom() - (rv.getHeight() - rv.getPaddingBottom());
-            if (dy > 0) rv.scrollBy(0, dy);
+            if (dy > 0) {
+                // Item 6: Smart Scroll Physics (smooth scrolling during generation)
+                if (busy) {
+                    rv.smoothScrollBy(0, dy, new android.view.animation.LinearInterpolator(), 80);
+                } else {
+                    rv.scrollBy(0, dy);
+                }
+            }
             updatePinned();
         });
     }
@@ -2598,6 +2652,15 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             if (!t.trim().isEmpty()) out.add(textSeg(item, t, ti++));
         }
         if (out.isEmpty()) out.add(item);
+        // only the LAST text piece carries the copy/regen footer + duration
+        int lastText = -1;
+        for (int i = 0; i < out.size(); i++) {
+            if (out.get(i).kind == ChatItem.ASSISTANT) lastText = i;
+        }
+        for (int i = 0; i < out.size(); i++) {
+            ChatItem c = out.get(i);
+            if (c.kind == ChatItem.ASSISTANT && i != lastText) c.noFooter = true;
+        }
         return out;
     }
 

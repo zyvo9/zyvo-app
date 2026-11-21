@@ -1,4 +1,4 @@
-﻿# Zyvo Code on Termux fork â€” project memory
+# Zyvo Code on Termux fork â€” project memory
 
 Fork of `termux/termux-app` (package `com.termux`) carrying our Chat UI + the
 bundled zyvo engine. Repo `zyvo9/zyvo-termux` (public, default branch **master**),
@@ -341,3 +341,437 @@ main CSS `out/renderer/assets/styles-NK68EN_n.css`, 480KB, 59 keyframes).
 - Thought row: "Thought · 4s" gray, no bold "for". Inline code chip #1A1A1A bg /
   #C9CDD3 text. Tokens: bg #0F0F10, card #17181A, line #262626, text #ECECEC /
   #9A9CA3 / #6B7075.
+
+## 2026-11-16 - UI pass SHIPPED (apk-88 = 531912e, CI green)
+- All of the above implemented. Details worth remembering:
+  - Run group: `batchCard/batchExplore/batchRun/batchChanged/groupSeq` in
+    ChatFragment; first tool inserts the header BEFORE the leading thought
+    rows and adopts them (group id); `countTool()` classifies
+    write/edit/patch=Changed, isExploreTool=Explored, else Ran;
+    `updateBatchHeader()` rebuilds the live text; `closeBatch()` collapses
+    (called on assistant text part, sendMessage, finishTurn).
+  - ChatAdapter: `groupCollapsed()` scans back over TOOL/THOUGHT rows;
+    `capSpans()`, `langFor()`, `extOf()`, `nextStage()`;
+    diffSpans = gutter + solid full-width washes + syntax colors;
+    numberedBody = green gutter (write only); bindThought honors group.
+  - P0-2: AdbBridgeServer token moved to `files/home/.zyvo-adb-token`
+    (chmod 600) - matches the `$HOME/.zyvo-adb-token` read in the
+    `zyvo-adb` script.
+  - P0-3: ApiClient `http()` read=60s, `sse()` read=0; subscribe/rawCall use sse().
+  - P0-1: sessionId volatile + `mine(sid)` filter (also added to session.idle).
+  - P0-4: session.idle -> 900ms `idleSettle` (skips while a tool runs or a
+    newer signal arrived).
+  - Home bg: `drawable/new_chat_bg.png` regenerated as 1080x2400 #0F0F10 with
+    the Z+ZYVO art at ~14% opacity (crop 42,200 699x753 of the source jpg,
+    content bbox 130,138 457x441 + 24px pad). The `empty` container keeps this
+    as its background - no extra ImageView needed.
+  - Icons: `ic_foreground.png` (432, alpha-keyed white art), legacy
+    mipmap-*/ic_launcher(.round).png regenerated. `ic_bg_card` stays the
+    PRE-EXISTING layer-list XML - do NOT add a PNG with that name (duplicate
+    resource kills mergeDebugResources).
+  - UTF-8 hazard: PowerShell Get-Content/Set-Content mangles `·`; edit such
+    files with python script files, not PS.
+- Phone install pending: adb had no device (wireless debugging off / port
+  changed). Install apk-88 arm64 when the phone is reachable.
+
+## 2026-11-16 - LOCAL PC BUILD ENV (Android Studio on DESKTOP-DHVMQAB)
+- Project path on this PC: `C:\Users\Admin\Documents\zyvo-termux`
+  (NOT `C:\Users\Admin\zyvo-termux`).
+- Android SDK root = `C:\Users\Admin\AppData\Local\Android` (this is what
+  Android Studio 2026.2.2 has registered in jdk.table.xml). It now holds
+  platform-tools, build-tools 35.0.0 + 36.0.0, platforms android-36 &
+  android-37.0, ndk/29.0.14206865 (2.3 GB), cmdline-tools/latest, licenses.
+  A second half-SDK `...\Android\Sdk` still exists but is no longer used
+  (its build-tools/36.0.0 + platform-tools were moved into the root).
+- `local.properties` -> `sdk.dir=C\:\\Users\\Admin\\AppData\\Local\\Android`.
+- Gradle 9.2.1 wrapper + AGP 8.13.2; `gradle/gradle-daemon-jvm.properties`
+  (untracked, auto-generated) pins the daemon JVM to **25** - that works,
+  because Android Studio's JBR is Temurin 25 (`C:\Program Files\Android\
+  Android Studio\jbr`). CLI builds must set JAVA_HOME to that JBR; plain
+  `java` on PATH is Temurin 21 and would trigger a JDK-25 auto-provision.
+- Engine/bootstraps are NOT in git (`.so`/`*.zip` ignored). To make a local
+  build equal to CI, mirror `.github/workflows/zyvo-build.yml`:
+  download `https://github.com/zyvo9/ZYVO-AI/releases/download/android-v1.17.9/`
+  `zyvo-1.17.9-android-aarch64.zip`, `...-x86_64.zip`, `skills.tar.gz`;
+  `zyvo.bin` -> `app/src/main/jniLibs/<abi>/libzyvo.so`, `usr/lib/*.so` ->
+  same dir, `skills.tar.gz` -> `app/src/main/assets/`. Bootstrap zips are
+  downloaded by the `downloadBootstraps` Gradle task (needs network).
+- Build command (PowerShell, from the project dir):
+  `$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr";
+   $env:TERMUX_PACKAGE_VARIANT="apt-android-7";
+   .\gradlew.bat assembleDebug --console=plain -PzyvoBuild=900`
+  Outputs: `app/build/outputs/apk/debug/app-<abi>-debug.apk` + `app-universal-debug.apk`.
+  Keys stay empty locally (`-PzyvoOpencodeKey` / `-PzyvoGatewayKey` are CI secrets;
+  P0-5 lane key is deliberately skipped).
+- Phone install: `C:\Users\Admin\AppData\Local\Android\platform-tools\adb.exe
+  install -r app\build\outputs\apk\debug\app-arm64-v8a-debug.apk`.
+
+- VERIFIED 2026-11-16: full local `assembleDebug` -> BUILD SUCCESSFUL (1m50s first
+  run after bootstraps). Artefacts in `app/build/outputs/apk/debug/`:
+  `termux-app_apt-android-7-debug_arm64-v8a.apk` 97.6 MB, `_x86_64` 81.4,
+  `_armeabi-v7a` 38.4, `_x86` 40.9, `_universal` 222.5 MB - byte sizes match
+  CI apk-88. Engine confirmed inside the APK: `lib/arm64-v8a/libzyvo.so` 165 MB,
+  `libopentui.so`, `libtermux-bootstrap.so` 29 MB, `assets/skills.tar` (aapt
+  renames skills.tar.gz -> skills.tar; EngineManager tries both names).
+- First-run `termux-shared:buildNdkBuildDebug[x86_64]` ProcessException
+  ("NDK_PROJECT_PATH==null. Please explicitly set APP_BUILD_SCRIPT") was TRANSIENT -
+  the same task succeeded untouched on re-run; always retry once before touching NDK config.
+## 2026-11-16 - WORKFLOW RULE (user decision, follow every session)
+- zyvo writes CODE ONLY. Do NOT run `gradlew` / builds after each change.
+- User tests everything in ONE batch on a phone connected to Android Studio,
+  then builds the APK himself (Build > Build APK(s)) - he is sitting in front of Studio.
+- So: implement all requested features/changes first, keep the tree buildable,
+  tell him "Run (Shift+F10) on the phone" only when the batch is complete.
+- Only run a build if he explicitly asks or the code has a compile doubt he wants checked.
+- 2026-11-16: phone **Z60 plus** (Android 12, arm64-v8a, IP 192.168.1.117) paired over
+  wireless debugging; `com.termux` 0.118.0 / versionCode 118 is ALREADY installed
+  (lastUpdateTime 2026-11-16 02:53 = apk-88), so the apk-88 install task is DONE.
+  Reconnect later with `adb mdns services` -> `_adb-tls-connect._tcp` port then `adb connect`.- 2026-11-16: USER ASKS TO SEE THE APP UI -> take it off the phone, don't describe it:
+  `adb -s <ip:port> exec-out screencap -p > shot.png` then `Start-Process shot.png`
+  (he wants the image OPENED, not a path). Save shots under `%TEMP%\zyvo\shots\`.
+## 2026-11-16 - NEXT GOAL: UI "smoother + more natural + interesting"
+- User's words: "ui ta aro smooth ar natural interesting korar ki ki ase" - polish pass on top of apk-88.
+- Known jank source: item_tool.xml uses `android:animateLayoutChanges="true"` on the tool row (auto
+  layout animation = stutter); replace with a measured 160-200ms height/alpha ValueAnimator + chevron rotation.
+- No touch feedback today: tool cards (bg_tool_card) and drawer rows (bg_session_item) are clickable without
+  a ripple -> add `?attr/selectableItemBackground` foreground ripples.
+- Drawer row titles truncate to "S..." for some sessions (item_session title match_parent, maxLines 1) - investigate width/measure bug.
+- Tool spinner is a text hack (TextView with "⠋<" monospace) -> should be a rotating arc drawable/frame animation.
+- Home is a static watermark + composer; no suggestion chips / recent-task row yet.
+
+## 2026-11-16 - CARD BODY = CAPPED + SCROLLS INSIDE (user rule)
+- User rule: no card may fully expand. Long output scrolls INSIDE the card
+  ("sotar modde scroll hobe"), applied to every card type.
+- New `com.zyvo.code.MaxHeightScrollView` (extends androidx NestedScrollView,
+  nested scrolling on so the RecyclerView still gets edge drags). Cap =
+  fraction of screen height, clamped 110-330dp; `setMaxFraction()` per use.
+- `item_tool.xml`: `tool_scroll` (MaxHeightScrollView, default 0.40) wraps ONLY
+  `code_text`; the card header (lang + copy) stays pinned above it.
+  `code_text` renders with maxLines=MAX_VALUE, ellipsize=null and a
+  `capSpans(...,800)` guard in the "full" stage; preview stages end with "...".
+  Scroll resets to the top on every tap (posted after notifyItemChanged).
+- `item_code.xml` (reply code block): same wrapper `code_scroll` with
+  `setMaxFraction(0.28)` in CodeVH, `capSpans(...,200)`; expand dialog kept.
+- `animateLayoutChanges="true"` REMOVED from item_tool/item_thought/item_todo
+  (that was the stutter). Body open now = 150ms alpha+4dp rise (`fadeBodyIn`),
+  chevron rotates 150ms.
+- Tool spinner = real rotating arc: `drawable/ic_spinner_arc.xml` + ImageView
+  `tool_spinner` + ObjectAnimator(rotation 0-360, 900ms, infinite) inside
+  `ToolVH.startTicker/stopTicker` (TickingVH's braille ticker now unused by it).
+- Tap cycle unchanged: closed -> 10 lines -> full (scrollable) -> closed.
+
+## 2026-11-16 - RUN-GROUP HEADER REMOVED (user rule)
+- User: the "Ran N commands" header (folder icon) folded every command away,
+  collapsed itself, and left a dead empty block in the chat -> remove it.
+- `ChatFragment.handlePart` no longer inserts `ChatItem.summary` (the block at
+  the old line 1304-1326 is gone); `batchCard` stays null forever, so
+  `closeBatch()` / `countTool()` / `updateBatchHeader()` are inert no-ops and
+  lines 1388/1443 never assign a group.
+- `ChatAdapter.groupCollapsed()` now returns false unconditionally - a tool or
+  thought row must never be hidden behind a header again.
+- Do NOT reintroduce grouping headers without asking the user.
+
+## 2026-11-16 - GROK 1.2.57 FULL RE (icons + motion inventory)
+- XAPK pulled to `%TEMP%\zyvo\grok\` (base 57.8MB + arm64/en/mdpi splits).
+  jadx 1.5.1 re-installed at `C:\Users\Admin\Tools\jadx` (the old copy was gone);
+  decompile = 45,281 java files, fully R8-renamed (`a`, `a0`, `q5`, `l1` ...).
+- ICONS EXTRACTED: `design/grok-study/icons/vector/` = 498 files (all `ic_*`,
+  24dp, fill #000/#fff so `android:tint` works, 105 stroke-style) + both
+  wordmarks + `ic_grok_cosmos`. Preview page: `%TEMP%\zyvo\grok\icons\grok-icons.html`,
+  raw paths: `%TEMP%\zyvo\grok\icons\vectors.json`.
+- ANIMATIONS: nothing liftable. `res/anim` (38) + `res/animator` (16) are ALL
+  AndroidX library; 95 anim-bearing XMLs are library + OpenMoji `$avd_*`;
+  no Lottie; `assets/i12g.mov` has no moov atom (unusable). Grok is 100% Compose,
+  so its motion lives in obfuscated Kotlin - durations/easings not recoverable.
+- Liftable sound assets: `assets/chimes/{start,end,start02,start04,end02,end04}.m4a`.
+- Candidate motion additions list (9 items, all View+Animator, no deps):
+  `design/grok-study/EXTRACT-NOTES.md`.
+- REA state: ghidra + jadx-bridge healthy; node 24.19.0 is BELOW the 24.22.1
+  floor (rea doctor `healthy:false`), hopper and kuna missing.
+
+## 2026-11-16 - Grok icons + motion pass #2 (code only, NOT built)
+- ICONS: 18 vectors copied `design/grok-study/icons/vector` -> `res/drawable/`
+  as `ic_g_*.xml` (grok keyboards/terminal, lists, folder, read/write file,
+  pencil_edit, globe, search, code_block, agent, sparkle, wrench, copy,
+  refresh, expand, collapse, send). All 24dp, `fillColor #000000`, NO
+  android:tint in the file -> runtime tint works.
+- `ChatAdapter.iconFor()` now returns the `ic_g_*` set (terminal / lists /
+  folder / read_file / write_file / pencil_edit / globe / search / code_block /
+  agent / sparkle / wrench). Action icons swapped in XML: `btn_copy` ->
+  `ic_g_copy`, `btn_regen` -> `ic_g_refresh`, tool `code_copy` -> `ic_g_copy`.
+  Old `ic_lc_*` files left in place (unused, harmless).
+- MOTION (all gated on `reduceMotion`):
+  - streaming caret: `withCaret()` appends `▍` on a 480ms blink, used by
+    `bindStreamText` + the revealing branch of `bindMessage`.
+  - reply action row slides in once: `ChatItem.actionsAnimated` + 6dp rise /
+    alpha 170ms with 60ms delay in `bindMessage`.
+  - card body open = spring: `fadeBodyIn` now 6dp + OvershootInterpolator(0.7),
+    210ms.
+  - send button: haptic on ACTION_DOWN, 0.88 -> 1.06 -> 1.0 two-stage spring
+    (`ChatFragment` send touch listener).
+  - drawer rows (`SessionAdapter.VH` constructor): 0.97 dip + 160ms return.
+- SKIPPED: "thinking dots" next to the thought title - the shimmer runs a
+  LinearGradient shader on the same TextView, so ForegroundColorSpan dots
+  would be invisible. Needs a separate dot view first (layout change).
+- Verification: `:app:compileDebugJavaWithJavac` exit 0 + `javachk.py` JAVA OK.
+  Full APK build still left to the user (Run / Build APK in Studio).
+
+## 2026-11-16 - PACKAGING FIX + "no build" rule (user repeated)
+- User again: "build koiro na, phone e run koro, build to sob sesh e korbo" ->
+  NEVER run `assembleDebug` / `packageDebug` / any `gradlew` build task on our own,
+  not even to verify. He tests with Studio Run on the phone and builds at the end.
+  (A javac-only compile check for a specific doubt is the sole exception.)
+- Studio error `Execution failed for task ':app:packageDebug' > Could not find EOCD
+  in ...\intermediates\apk\debug\termux-app_..._arm64-v8a.apk` = the previously
+  written APK zip is TRUNCATED (write was cut: restart / AV / disk). It is a stale
+  artifact, NOT a code problem.
+  FIX (worked): delete `app\build\intermediates\apk` entirely, then Run again -
+  Gradle repackages from scratch. Verify a suspect APK first with
+  `[System.IO.Compression.ZipFile]::OpenRead(path)` - "End of Central Directory
+  record could not be found" confirms truncation. `app\build\outputs\apk\debug`
+  may still hold the last GOOD APKs (they are valid, just stale).
+- Phone at that moment: adb shows `adb-Z60plusBD2310070295-7kxTqf._adb-tls-connect._tcp`
+  device (mDNS serial) - Studio Run works; the old 192.168.1.117:34197 port is dead.
+
+## 2026-11-16 - Tool card = Grok run box / file box (redesign)
+- Grok evidence: 100% Compose, so no layout/color files exist for its tool cards.
+  What IS in resources: `grok_bots_activity_running_a_few_commands`,
+  `..._writing_some_code`, `..._reading_the_file`, `grok_bots_approval_ran_one_command`
+  ("Ran 1 command"), `grok_bots_approval_command_header` ("Command"),
+  `..._show_more` / `..._show_less`, `grok_bots_approval_source_terminal` ("Terminal"),
+  plus `ic_code_terminal` / `ic_code_block` / `ic_vector_terminal`.
+  => Grok's pattern: short verb header, and the COMMAND lives inside the box
+  (a terminal-like block), never repeated in the header.
+- `item_tool.xml` rewritten around that: card header unchanged (icon + verb +
+  +N -N + target + chevron) but body is now a real run box:
+  header row (lang/file label, mono 11sp, dim + copy 34dp) -> `cmd_line`
+  ("$ command", mono 12sp, dim `$` span) -> 1dp `cmd_sep` hairline -> scroll body.
+  `body_fade` (drawable `bg_body_fade.xml`, transparent -> #121315) sits at the
+  bottom of the scroll frame and shows only while `canScrollVertically(1)`.
+- `ChatAdapter.bindTool` now: computes isTerminal BEFORE the body chain,
+  `code = ""` when a shell tool has no output yet (the "$ command" line carries
+  the card), `showCmd = isTerminal && !clean.equals(payload)`.
+  When a shell box is OPEN the header title is hidden (`h.name` GONE) so the
+  command is not printed twice; collapsed it stays.
+  Box label = `langFor()` (TSX/Bash/JSON); for write/edit it falls back to
+  `shortPath()` (last 2 segments) only when langFor yields write/edit/patch.
+  New helpers: `cmdSpans()` (SpanString, `$ ` dim) and `shortPath()`.
+- Fade listener is guarded `Build.VERSION.SDK_INT >= 23` (minSdk is 21) plus a
+  post-bind refresh call.
+- Verified: XML ET parse OK + `:app:compileDebugJavaWithJavac` exit 0.
+
+## 2026-11-16 - Text style pass (Grok typography) + reveal cap
+- How text actually shows: engine publishes `message.part.delta`; `applyDelta`
+  appends to the part; `revealTick` (16ms, `step = max(2, ceil(backlog/30))`,
+  now CAPPED at 120 chars/tick so a burst cannot dump at once) moves
+  `ChatItem.shown`, and only the TextView is rebound (`PAYLOAD_STREAM`).
+  While streaming the text is `plainMarkdown()` (markers stripped); the moment
+  the stream ends ONE full bind renders real Markwon markdown - hence the small
+  reflow at the end. Grok instead parses markdown live in Compose, so it has no
+  end swap; a live-markdown variant here would need a throttled (>=80ms)
+  Markwon parse per tick = jank risk on long replies (offered, not done).
+- MarkwonTheme (ChatAdapter ctor) now Grok-ish: heading multipliers
+  {1.26, 1.16, 1.08, 1.02, 1, 1} (was all 1f), `headingBreakHeight(dp(12))`,
+  `blockQuoteColor(line)` + `blockQuoteWidth(dp(2))`, `bulletWidth(dp(4))`,
+  `thematicBreakColor(line)`, link = @color/ok, code = mono on @color/code_bg.
+- Markwon 4.x in this project has NO `bulletRadius(int)` on MarkwonTheme.Builder
+  (compile error) - do not re-add.
+
+## 2026-11-16 - Editor box (12 lines, gutter, no wrap) + collapsed rows + Working stays
+- User rules (2026-11-16): tool rows (terminal / write / edit) start COLLAPSED;
+  the code box is a fixed ~12-line editor box with a pinned line-number gutter
+  ("1 2 3"), the body scrolls DOWN inside it and long lines NEVER wrap - they run
+  right and the box scrolls SIDEWAYS ("1st line er lekha 2nd line e jabe na,
+  dorkar moto samne jabe"). Reference: `Downloads\Screenshot_20.png`.
+- `item_tool.xml` body is now:
+  MaxHeightScrollView(`tool_scroll`) > LinearLayout(horizontal) >
+  [`code_gutter` TextView (mono 11sp, gravity end, ok-green numbers, minWidth 30dp)]
+  [`gutter_sep` 1dp line] [`code_hscroll` HorizontalScrollView weight 1 >
+  `code_text` (mono, `scrollHorizontally="true"`, wrap_content, no maxLines)].
+  `body_fade` still overlays the bottom edge.
+- `MaxHeightScrollView.setMaxPx(px)` added (sets fraction=1f so the pixel cap
+  wins). `bindTool` posts `12 * codeText.getLineHeight() + dp(12)` after setText.
+- Write bodies: `syntaxBlock(content)` + pinned gutter (`gutterText(n)`), the old
+  inline `numberedBody()` is no longer used for write. Diff bodies keep their own
+  inline numbers + washes.
+- Open rule: `open = !item.collapsed && (item.expanded || item.full)` - nothing
+  auto-opens any more (was: terminal/write/edit/failed auto-open).
+- `removeWorking()` calls at BOTH reasoning-start sites in ChatFragment removed:
+  the in-chat "Working" row used to vanish the moment thinking began, i.e. before
+  the turn ended. It now lives until `finishTurn()`.
+- Verified: XML parse OK + `:app:compileDebugJavaWithJavac` exit 0 (no APK built).
+
+## 2026-11-16 - Editor box round 2 (review fixes)
+- BUGS found by review and fixed:
+  1. `code_text` had `textIsSelectable="true"` -> TextView's Editor ate every
+     drag, so the box could NOT be scrolled by finger. Now false (copy button
+     is the copy path). Same for `cmd_line`.
+  2. `nextStage()` still cycled closed->10 lines->full->closed, but both middle
+     stages render identically now (12-line box) -> second tap looked dead.
+     Now a clean 2-state toggle (closed <-> open).
+  3. TERMINAL box was 12 code lines PLUS the "$ command" line -> taller than a
+     write box. `bindTool` post now subtracts the measured cmd line height from
+     the cap so every box has the same total height.
+  4. Dead code removed: `numberedBody()` (write uses syntaxBlock+gutter now),
+     unused `isExpandable` / `maxLines` locals.
+  5. Running terminal preview was `tail(...,8)` from the 40-line era -> now
+     `tail(...,40)` so the 12-line box is actually full.
+
+## 2026-11-16 - BUG HUNT from a phone screenshot (5 real bugs)
+- Phone evidence: `adb exec-out screencap -p` MUST be redirected with
+  `cmd /c "... > file"`; PowerShell `>` corrupts the PNG (System.Drawing then
+  says "Out of memory"). Base64/test: first 8 bytes `89504e470d0a1a0a`.
+- **CODE CARD WAS ALWAYS EMPTY** (`</>` + copy + expand, no body, no lang, both
+  buttons dead): `onBindViewHolder(holder, position)` had NO `CodeVH` branch, so
+  `bindCode()` never ran (the inflated XML defaults showed instead). FIX: added
+  `else if (holder instanceof CodeVH) bindCode(...)`. Reply code blocks
+  (`splitAssistantCode`) render again.
+- **+N −N pill was dead**: no click listener existed in `bindTool`, and
+  `showDiff` was never read. FIX: pill toggles `item.showDiff` + opens the row;
+  write rows render `diffSpans(item.diff)` when it is on.
+- **Duplicate action footers**: `splitCodeSegments` copies timeMs/durationMs to
+  every text piece -> every segment showed copy/regen + `7:27 PM · 5.7s`.
+  FIX: `ChatItem.noFooter` on all but the LAST text piece (bindMessage hides
+  actions + time for those).
+- **Stale stall banner**: "Waiting for the model - no reply yet (42s)" stayed up
+  after the reply arrived (only `finishTurn` hid it). FIX: `clearStallBanner()`
+  called from `handlePart` + `handlePartDelta` (hides only when `stallWarned`).
+- **Send button could end up rotated** ("send button ta ulta"): `updateSendIcon`
+  used `rotationBy(±180)` per swap, so a cancelled animation left the arrow at a
+  random angle. FIX: `animate().cancel()` + absolute `rotation(0f)` every swap.
+- Screenshot reading workflow that worked: pull PNG -> Pillow crop+upscale
+  (`Image.LANCZOS`) of the exact region -> Read the crop. Full-screen PNG at
+  720x1600 fails the Read tool's size limit.
+
+## 2026-11-16 - "box scroll kaj kore na" = tap bubbling to the card toggle
+- BUG: the tool card's click listener lives on `tool_card` (an ANCESTOR of the
+  whole body). A tap anywhere inside the opened box bubbled up to it and
+  `nextStage()` CLOSED the box, so "tap + drag inside to scroll" looked dead.
+- FIX 1: `ToolVH` ctor sets a no-op click listener + `setClickable(true)` on
+  `tool_body`, so every unhandled tap inside the box is swallowed. The HEADER is
+  still the toggle (that is where the chevron is).
+- FIX 2: `android:nestedScrollingEnabled="false"` on `tool_scroll` and
+  `code_scroll` -> classic ScrollView gesture handling: it calls
+  `requestDisallowInterceptTouchEvent(true)` on the RecyclerView, so a vertical
+  drag inside the box scrolls the BOX instead of the chat list.
+- Symptom to remember: "12 line er beshi, click kore scroll korle kaj kore na"
+  is a bubbling/gesture-ownership bug, never a height bug.
+
+
+
+
+
+
+
+
+## 2026-11-18 - LAUNCHER ICON = the real Z-orbit artwork (user decision)
+- User rejected the hand-drawn SVG recreation ("oi er theke valo hoto ... eta app
+  er icon e bosiye dita") and pointed at `Downloads\Gemini_Generated_Image_b2t9nbb2t9nbb2t9.jpg`
+  as the LOOK target: a near-black rounded tile with the white italic Z + orbit
+  swoosh, legible at small size.
+- Source artwork = `Downloads\Screenshot_1.png` (310x246 RGBA, opaque #0A0A0A bg,
+  mark bbox 55,65-260,206 = 206x142). Alpha keyed with luminance:
+  `alpha = clip((lum-14)/(235-14),0,1)` -> clean transparent white mark.
+- Assets regenerated (`design\zyvo-brand\make-icons.py` reproduces everything):
+  legacy `mipmap-*/ic_launcher(.round).png` 48-192 = #0B0B0F rounded tile
+  (r 0.22n) + mark at 0.70n; `drawable/ic_foreground.png` 432 = mark at 0.47n
+  centred (must stay inside the 66% safe circle - 0.545 clipped the ring tip);
+  `drawable-*/ic_zyvo_mark.png` 24dp mark for headers; masters in
+  `design\zyvo-brand\` (mark-master.png, zyvo-icon-1024.png, transparent 1024).
+- `res/drawable/ic_bg_card.xml` was a 6dp-inset rounded layer-list (would leave
+  transparent corners under an adaptive mask) -> now a plain full-bleed
+  `#0B0B0F` rectangle. Keep it XML (a PNG of that name = duplicate resource).
+- App label is STILL "Termux" (&TERMUX_APP_NAME; in values/strings.xml). The
+  mockup shows "ZYVO" underneath - offered as a one-line change, NOT applied.
+## 2026-11-18 - chat shell redesign (user spec from mockup) + code card cleanup
+- User gave a locked visual spec (source: Downloads\Gemini_Generated_Image_2paiit2paiit2pai.jpg):
+  canvas #0B0B0F, headings white, body #E4E4EB, cards/user bubbles #1E1E24.
+- `fragment_chat.xml` rebuilt:
+  - top bar 58dp = 34dp logo chip (bg_logo_chip, ic_zyvo_mark tint white) + "ZYVO"
+    wordmark 19sp/letterSpacing .06 + "AI Agent" pill (bg_agent_pill, #8E8EA0 12sp) +
+    hamburger btn_sessions (40dp borderless). 1dp `header_line` #1A1A22 under it.
+    **btn_new was REMOVED** (new chat = drawer); do not re-add R.id.btn_new.
+  - centered watermark `@drawable/zyvo_watermark` (drawable-nodpi, 1200x1160, tint
+    @color/watermark_tint #17171D, 44dp side margins, adjustViewBounds) as the FIRST
+    child of the list FrameLayout -> under the transcript. `empty` lost its
+    `new_chat_bg` image (that PNG had #0F0F10 baked in and would show as a box).
+  - dock = `suggest_row` (HorizontalScrollView, fillViewport, centered) with
+    chip_s1 "Brainstorm ideas" / chip_s2 "Help me code" (bg_suggest_chip pills) +
+    `composer` horizontal pill (bg_composer #16161E r26 1dp #262630): btn_plus 34dp,
+    input (hint "Message ZYVO..."), btn_voice 34dp, btn_send 38dp white ic_arrow_up.
+  - `agent_chip` + `composer_model` moved to a muted centered meta line UNDER the pill
+    (11sp, text_disabled) - keeps the mockup's clean dock.
+- Java: `suggestRow` field + `updateSuggest()` (visible only while the input is empty),
+  chip_s1/s2 reuse the existing `chipClick`, `newBtn` lookup deleted.
+- Palette (both values/ and values-night/): bg #0F0F10 -> **#0B0B0F**, header likewise,
+  user_bubble #1C1D20 -> **#1E1E24**; new tokens header_line, agent_muted, input_bg,
+  input_line, chip_bg, chip_text, body_text, watermark_tint, logo_chip.
+  New strings: agent_label "AI Agent"; composer_hint now "Message ZYVO...".
+- Reply CODE CARD (item_code.xml) after the phone screenshot showed `</>` + "text" +
+  copy + expand clutter and cramped mono:
+  - header = uppercase letterspaced language label (10sp) + ONE copy icon (32dp);
+    `code_tag` and `code_expand` ids are GONE (R.id.code_tag / R.id.code_expand no
+    longer exist - do not reference them).
+  - long-press on the body opens the full `showCodeDialog` (expand action kept,
+    just not as a button). Card scroll cap 0.36.
+  - body mono 13sp, lineSpacingExtra 4dp, padding 13dp all round (last line no
+    longer touches the border).
+- Typography: assistant text 16sp -> 15sp + lineSpacingExtra 7dp + @color/body_text;
+  user bubble 15sp + 4dp spacing + 11dp padding. item_code root padding 18dp/6dp so a
+  card and the prose that follows it no longer touch.
+- Verified with `:app:compileDebugJavaWithJavac` (clean). APK still built by the USER
+  in Studio (Run / Build APK) - never by us.
+## Workflow (user's rule, 2026-11-18)
+- zyvo = code in this project. USER = runs/builds in Android Studio (Shift+F10) and tests on the phone.
+  Never treat a CI push as the verification loop unless a release APK was explicitly requested.
+- Allowed local check: `:app:compileDebugJavaWithJavac` only (never assemble/package).
+## 2026-11-18 - REDESIGN REVERTED (user: "pura ui emon kore felso re, undo kor")
+- The mockup-based chat shell (logo chip header + "AI Agent" pill + suggest chips + #0B0B0F
+  palette + decluttered code card + drawer restyle) was REJECTED. Reverted to the previously
+  committed UI (HEAD 531912e) for: ChatAdapter, ChatFragment, ChatItem, SessionAdapter and the
+  layouts fragment_chat / activity_chat / item_code / item_message_assistant / item_message_user /
+  item_session / item_thought / item_todo / item_tool + bg_code_card / bg_composer / bg_tool_card /
+  bg_user_bubble + drawable/new_chat_bg.png (restored).
+- KEPT (approved earlier, not part of the reject): launcher icon art (ic_foreground.png, mipmaps,
+  ic_bg_card.xml), AndroidManifest (ChatActivity as launcher), dark colour tokens, tool-manifest text.
+- The ONE wanted change: the ZYVO banner stays in the background. 
+ew_chat_bg still backs the
+  empty state, and ragment_chat.xml now has an ImageView (src @drawable/zyvo_watermark, tint
+  #17171D, alpha .55, 44dp side margins, centerInside) as the FIRST child of the list FrameLayout
+  so the mark also sits behind the transcript.
+- Untracked leftovers from the rejected redesign (bg_logo_chip, bg_agent_pill, bg_suggest_chip,
+  ic_g_*, MaxHeightScrollView.java, bg_body_fade/bg_fade_bottom) are NOT referenced by any live
+  layout/Java after the revert - harmless, delete on request.
+- Verified: XML parse OK + :app:compileDebugJavaWithJavac exit 0. APK is the user's to build.
+- Banner tuning (2026-11-18, user): "logo ta halka uproe ar niche lomba" -> ragment_chat.xml watermark now has
+  ndroid:scaleY="1.3" (taller, pivots on the view centre) + ndroid:translationY="-56dp" (sits higher).
+  Kept: alpha 0.55, tint #17171D, 44dp side margins, centerInside. XML parse OK.
+## 2026-11-21 - 16 KB page-size compatibility (Android 15 / Play checklist)
+- APK Analyzer warning pointed at `libconscrypt_jni.so` LOAD segments being 4 KB
+  aligned. Source = `org.conscrypt:conscrypt-android:2.5.2` (prebuilt AAR; 2.5.2 is
+  the last release, there is no newer artifact). Needed for adb wireless pairing
+  (`Conscrypt.exportKeyingMaterial`), so it cannot be dropped.
+- Fix tool: `tools/patch-16k-elf.js <so> [--check]` - inserts zero padding so every
+  PT_LOAD satisfies `p_vaddr === p_offset (mod 16384)` and sets `p_align = 16384`.
+  Section bytes stay byte-identical (sha256 per section verified on all 4 ABIs); only
+  file offsets / header table positions move. Handles ELF32 + ELF64 LE.
+- Gradle wiring (`app/build.gradle`, second `afterEvaluate`): per-variant task
+  `realignConscrypt16k<Variant>` patches
+  `intermediates/stripped_native_libs/**/libconscrypt_jni.so` right after
+  `strip<Variant>DebugSymbols`; `package<Variant>` depends on it. Requires `node`
+  on PATH (CI has it, local Studio has it). Verified with `gradlew -q :app:tasks --all`
+  -> both tasks registered; `gradlew -q help` configures clean.
+- The other packaged libs are already 16 KB aligned (NDK 29): libzyvo.so,
+  libopentui.so, libc++_shared.so, libtagfix.so.
+- `targetSdkVersion=28` -> the November 2025 Play rule (targets Android 15+) does NOT
+  apply today, and the test phone (Android 12) uses 4 KB pages, so old APKs ran fine.
+  This fix is future-proofing, not a current crash fix.
+- `useLegacyPackaging true` -> libs are compressed and extracted at install, so zip
+  `-P 16` alignment is irrelevant; only the ELF PT_LOAD geometry matters.
+- PITFALL (2026-11-21, first build attempt): inside `app/build.gradle` the relative
+  `projectDir` is <repo>/app, so `new ProcessBuilder("node", "tools/patch-16k-elf.js", ...)`
+  failed with `Cannot find module ...\app\tools\patch-16k-elf.js` and
+  `realignConscrypt16kDebug` broke the build. Fix: `rootProject.projectDir` +
+  `new File(repoRoot, "tools/patch-16k-elf.js")`. Re-verified with `gradlew -q help`
+  (config green) and the patcher run directly on the real stripped intermediates
+  (arm64/x86_64/armeabi-v7a/x86 all now 16 KB aligned).
