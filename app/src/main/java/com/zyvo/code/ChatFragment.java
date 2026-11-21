@@ -523,22 +523,6 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         if (newBtn != null) newBtn.setOnClickListener(view -> newSession());
         v.findViewById(R.id.btn_sessions).setOnClickListener(view -> openSessionsDrawer());
 
-        // voice input: system speech recognizer fills the composer
-        View voiceBtn = v.findViewById(R.id.btn_voice);
-        if (voiceBtn != null) voiceBtn.setOnClickListener(view -> {
-            android.content.Intent i = new android.content.Intent(
-                    android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,
-                    java.util.Locale.getDefault().toString());
-            try {
-                startActivityForResult(i, REQ_VOICE);
-            } catch (Throwable t) {
-                UiUtil.toast(requireContext(), "Voice input not available");
-            }
-        });
-
         // Item 2: Spring Touch Physics (Bouncy response)
         if (send != null) send.setOnTouchListener((view, ev) -> {
             if (ev.getAction() == android.view.MotionEvent.ACTION_DOWN) {
@@ -828,24 +812,12 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     }
 
     private static final int REQ_ATTACH = 4201;
-    private static final int REQ_VOICE = 4202;
     private final java.util.List<Attach> attachments = new ArrayList<>();
     private LinearLayout attachRow;
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_VOICE && resultCode == android.app.Activity.RESULT_OK && data != null) {
-            java.util.ArrayList<String> said = data
-                    .getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);
-            if (said != null && !said.isEmpty() && input != null) {
-                String existing = input.getText().toString();
-                String spoken = said.get(0);
-                input.setText(existing.isEmpty() ? spoken : existing + " " + spoken);
-                input.setSelection(input.getText().length());
-            }
-            return;
-        }
         if (requestCode != REQ_ATTACH || resultCode != android.app.Activity.RESULT_OK
                 || data == null || !isAdded()) return;
         List<Uri> uris = new ArrayList<>();
