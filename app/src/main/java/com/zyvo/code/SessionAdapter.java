@@ -43,6 +43,15 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
     private final Listener listener;
     private String filter = "";
     private String currentId = "";
+    /** The session whose agent turn is running - shows the live spinner. */
+    private String busyId = "";
+
+    public void setBusySession(String id) {
+        String next = id == null ? "" : id;
+        if (busyId.equals(next)) return;
+        busyId = next;
+        notifyDataSetChanged();
+    }
 
     public SessionAdapter(Context ctx, Listener listener) {
         this.ctx = ctx;
@@ -111,6 +120,9 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
         Session s = visible().get(position);
         h.title.setText(s.title);
         h.meta.setText(s.pinned ? "📌 " + relTime(s.updated) : relTime(s.updated));
+        // the session with a running agent turn gets the live spinner
+        boolean busyRow = !busyId.isEmpty() && s.id.equals(busyId);
+        h.busy.setVisibility(busyRow ? View.VISIBLE : View.GONE);
         boolean current = s.id.equals(currentId);
         h.itemView.setSelected(current);
         h.title.setTextColor(h.itemView.getResources().getColor(
@@ -130,11 +142,13 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
     static final class VH extends RecyclerView.ViewHolder {
         final TextView title;
         final TextView meta;
+        final android.widget.ProgressBar busy;
 
         VH(@NonNull View v) {
             super(v);
             title = v.findViewById(R.id.title);
             meta = v.findViewById(R.id.meta);
+            busy = v.findViewById(R.id.session_busy);
             // soft press: the row dips while a finger is down and springs back
             float scale = android.provider.Settings.Global.getFloat(v.getContext().getContentResolver(),
                     android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f);

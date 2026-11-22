@@ -1890,6 +1890,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         ui.removeCallbacks(busyWatchdog);
         ui.removeCallbacks(stallTick);
         updateTaskDock();
+        // the sidebar marks the session whose agent turn is running
+        if (sessionAdapter != null) {
+            sessionAdapter.setBusySession(value && sessionId != null ? sessionId : "");
+        }
         if (send != null) {
             updateSendIcon();
             send.setContentDescription(getString(value ? R.string.stop : R.string.send));
@@ -2285,6 +2289,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         loadDrawerSessions();
         drawer.openDrawer(GravityCompat.START);
         staggerDrawerItems();
+        // re-apply the running-session marker to freshly loaded rows
+        if (sessionAdapter != null && busy && sessionId != null) {
+            sessionAdapter.setBusySession(sessionId);
+        }
     }
 
     private DrawerLayout activityDrawer() {
