@@ -2328,16 +2328,39 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         });
     }
 
+    /** Long-press menu: Grok/ChatGPT-style bottom sheet (Delete red, Rename,
+     *  Pin) that slides up from the bottom edge. */
     private void sessionActions(SessionAdapter.Session session) {
-        new AlertDialog.Builder(requireContext())
-                .setTitle(session.title)
-                .setItems(new String[]{getString(R.string.session_rename),
-                        getString(R.string.session_delete)}, (d, which) -> {
-                    if (which == 0) renameSession(session);
-                    else deleteSession(session);
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        com.google.android.material.bottomsheet.BottomSheetDialog sheet =
+                new com.google.android.material.bottomsheet.BottomSheetDialog(requireContext());
+        View sheetView = getLayoutInflater().inflate(R.layout.sheet_session_actions, null);
+        sheet.setContentView(sheetView);
+        // the material window paints a dim gray behind the sheet - clear it so
+        // the rounded panel reads against the drawer
+        View parent = (View) sheetView.getParent();
+        parent.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+
+        boolean pinned = new Prefs(requireContext()).pinnedSessions().contains(session.id);
+        TextView pinText = sheetView.findViewById(R.id.sheet_pin_text);
+        pinText.setText(pinned ? R.string.session_unpin : R.string.session_pin);
+
+        sheetView.findViewById(R.id.sheet_rename).setOnClickListener(x -> {
+            sheet.dismiss();
+            renameSession(session);
+        });
+        sheetView.findViewById(R.id.sheet_pin).setOnClickListener(x -> {
+            sheet.dismiss();
+            boolean nowPinned = new Prefs(requireContext()).togglePinnedSession(session.id);
+            UiUtil.toast(requireContext(), nowPinned
+                    ? getString(R.string.session_pinned_toast)
+                    : getString(R.string.session_unpinned_toast));
+            loadDrawerSessions();
+        });
+        sheetView.findViewById(R.id.sheet_delete).setOnClickListener(x -> {
+            sheet.dismiss();
+            deleteSession(session);
+        });
+        sheet.show();
     }
 
     private void renameSession(SessionAdapter.Session session) {

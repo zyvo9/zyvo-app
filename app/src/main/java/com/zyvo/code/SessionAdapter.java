@@ -22,6 +22,7 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
         public final String id;
         public final String title;
         public final long updated;
+        public boolean pinned;
 
         public Session(String id, String title, long updated) {
             this.id = id;
@@ -50,7 +51,11 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     public void setItems(List<Session> sessions) {
         items.clear();
-        if (sessions != null) items.addAll(sessions);
+        if (sessions != null) {
+            java.util.Set<String> pinned = new Prefs(ctx).pinnedSessions();
+            for (Session s : sessions) s.pinned = pinned.contains(s.id);
+            items.addAll(sessions);
+        }
         notifyDataSetChanged();
     }
 
@@ -73,11 +78,20 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
     }
 
     private List<Session> visible() {
-        if (filter.isEmpty()) return items;
-        shown.clear();
+        List<Session> out = new ArrayList<>();
         for (Session s : items) {
-            if (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(filter)) shown.add(s);
+            if (filter.isEmpty()
+                    || (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(filter))) {
+                out.add(s);
+            }
         }
+        // pinned sessions float to the top, newest below them
+        java.util.Collections.sort(out, (a, b) -> {
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            return Long.compare(b.updated, a.updated);
+        });
+        shown.clear();
+        shown.addAll(out);
         return shown;
     }
 
@@ -96,7 +110,7 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
     public void onBindViewHolder(@NonNull VH h, int position) {
         Session s = visible().get(position);
         h.title.setText(s.title);
-        h.meta.setText(relTime(s.updated));
+        h.meta.setText(s.pinned ? "📌 " + relTime(s.updated) : relTime(s.updated));
         boolean current = s.id.equals(currentId);
         h.itemView.setSelected(current);
         h.title.setTextColor(h.itemView.getResources().getColor(

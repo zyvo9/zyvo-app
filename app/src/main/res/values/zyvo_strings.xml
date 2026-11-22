@@ -17,6 +17,10 @@
     <string name="drawer_model_fmt">Model Â· %1$s</string>
     <string name="session_rename">Rename</string>
     <string name="session_delete">Delete</string>
+    <string name="session_pin">Pin</string>
+    <string name="session_unpin">Unpin</string>
+    <string name="session_pinned_toast">Pinned to top</string>
+    <string name="session_unpinned_toast">Unpinned</string>
     <string name="session_actions">Session actions</string>
     <string name="rename_hint">Session title</string>
 

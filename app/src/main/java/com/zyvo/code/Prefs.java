@@ -107,6 +107,22 @@ public final class Prefs {
         sp.edit().putString("variant_" + modelId, variant == null ? "" : variant).apply();
     }
 
+    /** Session ids pinned to the top of the drawer (Grok/ChatGPT style). */
+    public java.util.Set<String> pinnedSessions() {
+        java.util.Set<String> out = sp.getStringSet("pinned_sessions", null);
+        return out == null ? new java.util.HashSet<>() : out;
+    }
+
+    /** Returns true when the session is now pinned. */
+    public boolean togglePinnedSession(String sessionId) {
+        java.util.Set<String> set = new java.util.HashSet<>(pinnedSessions());
+        boolean added = !set.contains(sessionId);
+        if (added) set.add(sessionId);
+        else set.remove(sessionId);
+        sp.edit().putStringSet("pinned_sessions", set).apply();
+        return added;
+    }
+
     public String serverPassword() {
         return sp.getString("server_password", "");
     }
