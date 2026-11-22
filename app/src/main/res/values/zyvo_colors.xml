@@ -59,7 +59,6 @@
     <color name="chip_bg">#1A1A20</color>
     <color name="chip_text">#C9C9D1</color>
     <color name="body_text">#E4E4EB</color>
-    <color name="watermark_tint">#17171D</color>
     <color name="logo_chip">#15151A</color>
     <color name="drawer_bg">#101014</color>
 

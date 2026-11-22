@@ -50,7 +50,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private static final int V_USER = 0;
     private static final int V_ASSISTANT = 1;
     private static final int V_TOOL = 2;
-    private static final int V_SUMMARY = 3;
     private static final int V_THOUGHT = 4;
     private static final int V_WORKING = 5;
     private static final int V_TODO = 6;
@@ -127,8 +126,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         switch (items.get(position).kind) {
             case ChatItem.USER:
                 return V_USER;
-            case ChatItem.SUMMARY:
-                return V_SUMMARY;
             case ChatItem.TOOL:
                 return V_TOOL;
             case ChatItem.THOUGHT:
@@ -154,9 +151,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         LayoutInflater inf = LayoutInflater.from(ctx);
         if (viewType == V_USER) {
             return new MessageVH(inf.inflate(R.layout.item_message_user, parent, false));
-        }
-        if (viewType == V_SUMMARY) {
-            return new SummaryVH(inf.inflate(R.layout.item_summary, parent, false));
         }
         if (viewType == V_TOOL) {
             return new ToolVH(inf.inflate(R.layout.item_tool, parent, false));
@@ -245,8 +239,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         ChatItem item = items.get(position);
         if (holder instanceof MessageVH) {
             bindMessage((MessageVH) holder, item);
-        } else if (holder instanceof SummaryVH) {
-            bindSummary((SummaryVH) holder, item, position);
         } else if (holder instanceof WorkingVH) {
             bindWorking((WorkingVH) holder, item);
         } else if (holder instanceof ToolVH) {
@@ -478,13 +470,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     private void bindThought(ThoughtVH h, ChatItem item, int position) {
-        boolean collapsed = groupCollapsed(position, item.group);
-        h.itemView.setVisibility(collapsed ? View.GONE : View.VISIBLE);
-        if (collapsed) {
-            h.stopTicker();
-            h.stopShimmer();
-            return;
-        }
         animateIn(h.itemView, item);
         boolean hasTitle = !TextUtils.isEmpty(item.title);
         if (item.streaming) {
@@ -579,34 +564,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     // ------------------------------------------------------------- summary
-    private void bindSummary(SummaryVH h, ChatItem item, int position) {
-        h.text.setText(TextUtils.isEmpty(item.text)
-                ? ctx.getString(R.string.working) : item.text);
-        h.chevron.setRotation(item.expanded ? 180f : 0f);
-        h.itemView.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
-            item.expanded = !item.expanded;
-            notifyItemChanged(position);
-            int p = position + 1;
-            while (p < items.size()) {
-                ChatItem c = items.get(p);
-                if (c.group != item.group) break;
-                if (c.kind != ChatItem.TOOL && c.kind != ChatItem.THOUGHT) break;
-                notifyItemChanged(p);
-                p++;
-            }
-        });
-    }
-
     // ---------------------------------------------------------------- tool
 
     private void bindTool(ToolVH h, ChatItem item, int position) {
-        boolean collapsed = groupCollapsed(position, item.group);
-        h.itemView.setVisibility(collapsed ? View.GONE : View.VISIBLE);
-        if (collapsed) {
-            h.stopTicker();
-            return;
-        }
         boolean running = "running".equals(item.status) || "pending".equals(item.status);
         boolean failed = item.error || "error".equals(item.status);
 
@@ -838,13 +798,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         // slight spring: the panel settles instead of just appearing
         body.animate().alpha(1f).translationY(0f).setDuration(210)
                 .setInterpolator(new android.view.animation.OvershootInterpolator(0.7f)).start();
-    }
-
-    /** A tool/thought row is hidden while its run-group header is collapsed. */
-    private boolean groupCollapsed(int position, int group) {
-        if (group == 0) return false;
-        // Groups were removed - never hide a row behind a header again.
-        return false;
     }
 
     /** Cuts a spanned block after {@code maxLines} lines (preview mode). */
@@ -1351,19 +1304,6 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             super(v);
             title = v.findViewById(R.id.error_title);
             text = v.findViewById(R.id.error_text);
-        }
-    }
-
-    static final class SummaryVH extends RecyclerView.ViewHolder {
-        final ImageView icon;
-        final TextView text;
-        final ImageView chevron;
-
-        SummaryVH(@NonNull View v) {
-            super(v);
-            icon = v.findViewById(R.id.summary_icon);
-            text = v.findViewById(R.id.summary_text);
-            chevron = v.findViewById(R.id.summary_chevron);
         }
     }
 

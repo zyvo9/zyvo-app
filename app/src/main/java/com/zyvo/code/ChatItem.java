@@ -62,7 +62,6 @@ public final class ChatItem {
     public boolean collapsed = false;
     public boolean full = false;
     /** The "$ command" box shows the whole command, not the 120-char preview. */
-    public boolean cmdExpanded = false;
     /** The `+N −N` chip was tapped — show the changed lines inline. */
     public boolean showDiff = false;
     public boolean error = false;
@@ -110,16 +109,6 @@ public final class ChatItem {
         i.key = "code-" + System.nanoTime();
         i.text = content == null ? "" : content;
         i.lang = lang == null ? "" : lang;
-        i.timeMs = System.currentTimeMillis();
-        return i;
-    }
-
-    public static ChatItem summary(int group) {
-        ChatItem i = new ChatItem();
-        i.kind = SUMMARY;
-        i.key = "sum-" + group;
-        i.group = group;
-        i.expanded = true;
         i.timeMs = System.currentTimeMillis();
         return i;
     }

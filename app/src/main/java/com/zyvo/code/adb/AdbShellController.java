@@ -81,12 +81,6 @@ public class AdbShellController {
     }
 
     /** 空闲超时关闭连接（避免无线调试关闭后残留）。 */
-    public static void maybeCloseIdle() {
-        synchronized (LOCK) {
-            if (adb != null && System.currentTimeMillis() - lastUsedMs > 60_000) close();
-        }
-    }
-
     /** 以 shell 身份执行命令；失败自动重连一次。 */
     public static Result exec(String cmd) {
         synchronized (LOCK) {

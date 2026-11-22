@@ -598,6 +598,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     @Override
     public void onDestroyView() {
+        if (dockPulse != null) { dockPulse.cancel(); dockPulse = null; }
         engine.removeListener(this);
         closeStream();
         ui.removeCallbacksAndMessages(null);

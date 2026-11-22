@@ -92,9 +92,4 @@ public class MaxHeightScrollView extends ScrollView {
         setMeasuredDimension(Math.max(w, getSuggestedMinimumWidth()), my);
     }
 
-    /** True when the content is taller than the visible cap (used for a hint). */
-    public boolean isOverflowing() {
-        View child = getChildAt(0);
-        return child != null && child.getMeasuredHeight() > getMeasuredHeight();
-    }
 }
