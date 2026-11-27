@@ -171,10 +171,19 @@ public class AdbPairActivity extends Activity {
             pairPort.setText(String.valueOf(port));
         }
         if (paired) {
-            boolean connected = AdbShellController.ensureConnected();
-            status.setText(connected
-                    ? "Connected ✓ — the AI shell can run adb commands."
-                    : "Paired — enable Wireless debugging and pair again if the port changed.");
+            // ensureConnected does real socket I/O — it MUST run off the main
+            // thread or the network guard silently kills every connect attempt
+            // made from this screen
+            status.setText("Paired — connecting…");
+            new Thread(() -> {
+                final boolean connected = AdbShellController.ensureConnected();
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    status.setText(connected
+                            ? "Connected ✓ — the AI shell can run adb commands."
+                            : "Paired — enable Wireless debugging and pair again if the port changed.");
+                });
+            }).start();
         } else {
             AdbPairService.update(this, "Searching for the pairing screen…");
         }

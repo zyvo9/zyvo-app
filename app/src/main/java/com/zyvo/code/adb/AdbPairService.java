@@ -117,8 +117,10 @@ public class AdbPairService extends Service {
         super.onCreate();
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+            // Shizuku uses a HIGH channel so the pairing notification pops up
+            // instead of hiding silently in the shade
             NotificationChannel ch = new NotificationChannel(CHANNEL_ID,
-                    "ADB Connect", NotificationManager.IMPORTANCE_LOW);
+                    "ADB Connect", NotificationManager.IMPORTANCE_HIGH);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
@@ -185,10 +187,23 @@ public class AdbPairService extends Service {
         try {
             nsd = (NsdManager) getSystemService(Context.NSD_SERVICE);
             discovering = true;
-            nsd.discoverServices("_adb-tls-pairing", NsdManager.PROTOCOL_DNS_SD, discoveryListener);
+            // NSD requires the FULL type ("._tcp") — the bare "_adb-tls-pairing"
+            // never starts discovery on any ROM, which is why detection was dead
+            nsd.discoverServices("_adb-tls-pairing._tcp", NsdManager.PROTOCOL_DNS_SD, discoveryListener);
         } catch (Throwable t) {
             discovering = false;
+            scheduleDiscoveryRetry();
         }
+    }
+
+    private final android.os.Handler retryHandler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private int discoveryRetries;
+
+    /** Some ROMs refuse the first discovery attempt — retry a few times. */
+    private void scheduleDiscoveryRetry() {
+        if (discoveryRetries++ > 5 || !isRunning) return;
+        retryHandler.postDelayed(this::startDiscovery, 2000);
     }
 
     private void stopDiscovery() {
@@ -200,11 +215,18 @@ public class AdbPairService extends Service {
         }
     }
 
+    /** NsdManager allows one resolve at a time — found events can outrun it. */
+    private final java.util.concurrent.atomic.AtomicBoolean resolving =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     /** Kept ALIVE on purpose: a rotated pairing dialog advertises a NEW service
      *  and this listener picks it up within milliseconds. */
     private final NsdManager.DiscoveryListener discoveryListener = new NsdManager.DiscoveryListener() {
-        @Override public void onDiscoveryStarted(String type) { }
-        @Override public void onStartDiscoveryFailed(String type, int error) { discovering = false; }
+        @Override public void onDiscoveryStarted(String type) { discoveryRetries = 0; }
+        @Override public void onStartDiscoveryFailed(String type, int error) {
+            discovering = false;
+            scheduleDiscoveryRetry();
+        }
         @Override public void onDiscoveryStopped(String type) { }
         @Override public void onStopDiscoveryFailed(String type, int error) { }
         @Override public void onServiceLost(NsdServiceInfo info) {
@@ -212,16 +234,21 @@ public class AdbPairService extends Service {
         }
         @Override public void onServiceFound(NsdServiceInfo info) {
             // the port only arrives after resolve — found alone usually has 0
+            if (!resolving.compareAndSet(false, true)) return;
             try {
                 nsd.resolveService(info, resolveListener);
-            } catch (Throwable ignored) {
+            } catch (Throwable t) {
+                resolving.set(false);
             }
         }
     };
 
     private final NsdManager.ResolveListener resolveListener = new NsdManager.ResolveListener() {
-        @Override public void onResolveFailed(NsdServiceInfo info, int error) { }
+        @Override public void onResolveFailed(NsdServiceInfo info, int error) {
+            resolving.set(false);
+        }
         @Override public void onServiceResolved(NsdServiceInfo info) {
+            resolving.set(false);
             int p = info.getPort();
             if (p <= 0) return;
             // Shizuku's stale-resolve guard: bind a socket to test that

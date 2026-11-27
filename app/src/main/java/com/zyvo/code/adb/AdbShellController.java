@@ -305,7 +305,8 @@ public class AdbShellController {
                 @Override public void onStopDiscoveryFailed(String t, int e) {}
                 @Override public void onDiscoveryStopped(String t) {}
             };
-            nsd.discoverServices("_adb-tls-connect", NsdManager.PROTOCOL_DNS_SD, l);
+            // NSD requires the FULL type (._tcp) or discovery never starts
+            nsd.discoverServices("_adb-tls-connect._tcp", NsdManager.PROTOCOL_DNS_SD, l);
             latch.await(1500, TimeUnit.MILLISECONDS);
             try { nsd.stopServiceDiscovery(l); } catch (Throwable ignored) {}
             if (port.get() > 0) return port.get();
@@ -333,7 +334,8 @@ public class AdbShellController {
                 @Override public void onStopDiscoveryFailed(String t, int e) {}
                 @Override public void onDiscoveryStopped(String t) {}
             };
-            nsd.discoverServices("_adb-tls-pairing", NsdManager.PROTOCOL_DNS_SD, l);
+            // NSD requires the FULL type (._tcp) or discovery never starts
+            nsd.discoverServices("_adb-tls-pairing._tcp", NsdManager.PROTOCOL_DNS_SD, l);
             latch.await(1500, TimeUnit.MILLISECONDS);
             try { nsd.stopServiceDiscovery(l); } catch (Throwable ignored) {}
             if (port.get() > 0) return port.get();
