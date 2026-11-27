@@ -145,8 +145,8 @@
                 android:paddingBottom="14dp"
                 android:text="What files are on my phone?"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" 
-                android:visibility="gone" />
+                android:textSize="14sp"
+                android:visibility="visible" />
 
             <TextView
                 android:id="@+id/chip2"
@@ -161,8 +161,8 @@
                 android:paddingBottom="14dp"
                 android:text="List my Downloads folder"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" 
-                android:visibility="gone" />
+                android:textSize="14sp"
+                android:visibility="visible" />
 
             <TextView
                 android:id="@+id/chip3"
@@ -177,8 +177,8 @@
                 android:paddingBottom="14dp"
                 android:text="How much storage is free?"
                 android:textColor="@color/text_primary"
-                android:textSize="14sp" 
-                android:visibility="gone" />
+                android:textSize="14sp"
+                android:visibility="visible" />
         </LinearLayout>
 
         <ProgressBar
