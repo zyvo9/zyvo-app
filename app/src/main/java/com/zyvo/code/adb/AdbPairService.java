@@ -158,8 +158,11 @@ public class AdbPairService extends Service {
                 }
             }
             if (code != null && !code.isEmpty() && !pairing) {
+                // the pairing service stays advertised while the dialog is open,
+                // so a freshly-read code may arrive long after detection — keep
+                // the discovered port valid for two minutes
                 int port = livePairPort > 0
-                        && System.currentTimeMillis() - livePairPortAt < 20_000 ? livePairPort : -1;
+                        && System.currentTimeMillis() - livePairPortAt < 120_000 ? livePairPort : -1;
                 pairFlow(code, port);
             }
         }
@@ -174,7 +177,7 @@ public class AdbPairService extends Service {
                     : "Paired — open Wireless debugging, then type the code again to reconnect";
         }
         int p = livePairPort;
-        if (p > 0 && System.currentTimeMillis() - livePairPortAt < 30_000) {
+        if (p > 0 && System.currentTimeMillis() - livePairPortAt < 90_000) {
             return "Pairing screen detected — port " + p + " — just type the code";
         }
         return "Searching… open Wireless debugging > 'Pair device with pairing code'";
@@ -194,6 +197,13 @@ public class AdbPairService extends Service {
             discovering = false;
             scheduleDiscoveryRetry();
         }
+        // Shizuku parity: the CONNECT service is advertised whenever wireless
+        // debugging is ON — resolving it here seeds AdbShellController's port
+        // cache so post-pair connect is a single handshake instead of a scan
+        try {
+            nsd.discoverServices("_adb-tls-connect._tcp", NsdManager.PROTOCOL_DNS_SD, connectListener);
+        } catch (Throwable ignored) {
+        }
     }
 
     private final android.os.Handler retryHandler =
@@ -211,6 +221,10 @@ public class AdbPairService extends Service {
         discovering = false;
         try {
             nsd.stopServiceDiscovery(discoveryListener);
+        } catch (Throwable ignored) {
+        }
+        try {
+            nsd.stopServiceDiscovery(connectListener);
         } catch (Throwable ignored) {
         }
     }
@@ -271,6 +285,39 @@ public class AdbPairService extends Service {
         }
     }
 
+    // ---- continuous connect discovery (Shizuku AdbMdns, second type) ----
+    private final java.util.concurrent.atomic.AtomicBoolean resolvingConnect =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    private final NsdManager.DiscoveryListener connectListener = new NsdManager.DiscoveryListener() {
+        @Override public void onDiscoveryStarted(String type) { }
+        @Override public void onStartDiscoveryFailed(String type, int error) { }
+        @Override public void onDiscoveryStopped(String type) { }
+        @Override public void onStopDiscoveryFailed(String type, int error) { }
+        @Override public void onServiceLost(NsdServiceInfo info) { }
+        @Override public void onServiceFound(NsdServiceInfo info) {
+            if (!resolvingConnect.compareAndSet(false, true)) return;
+            try {
+                nsd.resolveService(info, connectResolveListener);
+            } catch (Throwable t) {
+                resolvingConnect.set(false);
+            }
+        }
+    };
+
+    private final NsdManager.ResolveListener connectResolveListener = new NsdManager.ResolveListener() {
+        @Override public void onResolveFailed(NsdServiceInfo info, int error) {
+            resolvingConnect.set(false);
+        }
+        @Override public void onServiceResolved(NsdServiceInfo info) {
+            resolvingConnect.set(false);
+            int p = info.getPort();
+            if (p <= 0 || !isPortAvailable(p)) return;
+            // seed the same cache AdbShellController's fast path reads first
+            AdbShellController.noteConnectPort(AdbPairService.this, p);
+        }
+    };
+
     // ------------------------------------------------------------- pairing
 
     /** Single pairing brain: discovered port first, then candidate rounds. */
@@ -302,7 +349,7 @@ public class AdbPairService extends Service {
                     LinkedHashSet<Integer> candidates = new LinkedHashSet<>();
                     if (manualPort > 0) candidates.add(manualPort);
                     if (livePairPort > 0
-                            && System.currentTimeMillis() - livePairPortAt < 30_000) {
+                            && System.currentTimeMillis() - livePairPortAt < 60_000) {
                         candidates.add(livePairPort);
                     }
                     if (scanned.isEmpty() || System.currentTimeMillis() - lastScanAt > 8_000) {

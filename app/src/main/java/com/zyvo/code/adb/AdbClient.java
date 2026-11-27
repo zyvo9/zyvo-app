@@ -78,7 +78,9 @@ public class AdbClient {
                     + "fixed_push_symlink_timestamp,abb_exec,split_bulk,ls_v2,apex").getBytes(StandardCharsets.UTF_8);
             socket = new Socket();
             socket.connect(new InetSocketAddress(host, port), 3000);
-            socket.setSoTimeout(30000);
+            // handshake reads get an 8s guard: a non-adb listener that accepts
+            // the TCP connect and stays silent must fail fast, not eat 30s
+            socket.setSoTimeout(8000);
             if (tls) {
                 // 1) 明文 CNXN 触发 STLS
                 in = new DataInputStream(socket.getInputStream());
@@ -87,7 +89,7 @@ public class AdbClient {
                 Packet p = readPacket();
                 if (!"STLS".equals(p.command)) {
                     // 明文 AUTH 模式的设备（root adbd）可能直接回 AUTH TOKEN
-                    if ("AUTH".equals(p.command)) return authLoop(key, p);
+                    if ("AUTH".equals(p.command)) return finishPlain(key, p);
                     throw new IllegalStateException("expected STLS, got " + p.command);
                 }
                 // 2) 回发 STLS
@@ -104,8 +106,8 @@ public class AdbClient {
             if (tls) {
                 while (true) {
                     Packet p = readPacket();
-                    if ("CNXN".equals(p.command)) return true;
-                    if ("AUTH".equals(p.command)) return authLoop(key, p);
+                    if ("CNXN".equals(p.command)) return connected();
+                    if ("AUTH".equals(p.command)) return finishPlain(key, p);
                 }
             }
 
@@ -114,15 +116,15 @@ public class AdbClient {
             writePacket("CNXN", 0x01000001, 0x00100000, cnxnPayload);
             while (true) {
                 Packet p = readPacket();
-                if ("CNXN".equals(p.command)) return true;
-                if ("AUTH".equals(p.command)) return authLoop(key, p);
+                if ("CNXN".equals(p.command)) return connected();
+                if ("AUTH".equals(p.command)) return finishPlain(key, p);
                 if ("STLS".equals(p.command)) {
                     writePacket("STLS", p.arg0, 0, null);
                     upgradeTls(host, port);
                     while (true) {
                         Packet p2 = readPacket();
-                        if ("CNXN".equals(p2.command)) return true;
-                        if ("AUTH".equals(p2.command)) return authLoop(key, p2);
+                        if ("CNXN".equals(p2.command)) return connected();
+                        if ("AUTH".equals(p2.command)) return finishPlain(key, p2);
                     }
                 }
             }
@@ -142,11 +144,25 @@ public class AdbClient {
         }}, new SecureRandom());
         SSLSocket tlsSock = (SSLSocket) sc.getSocketFactory().createSocket(socket, host, port, true);
         tlsSock.setUseClientMode(true);
-        tlsSock.setSoTimeout(30000);
+        tlsSock.setSoTimeout(8000);
         tlsSock.startHandshake();
         in = new DataInputStream(tlsSock.getInputStream());
         out = tlsSock.getOutputStream();
         socket = tlsSock;
+    }
+
+    /** Handshake success: restore the long socket timeout shell() needs for
+     *  silent long-running commands (the 8s guard is connect-time only). */
+    private boolean connected() throws Exception {
+        socket.setSoTimeout(30000);
+        return true;
+    }
+
+    /** Plain-AUTH path: run the auth loop, then restore the shell timeout. */
+    private boolean finishPlain(PrivateKey key, Packet first) throws Exception {
+        boolean ok = authLoop(key, first);
+        if (ok) socket.setSoTimeout(30000);
+        return ok;
     }
 
     /** 处理明文 AUTH 认证循环（旧式 adbd / root adbd）。 */

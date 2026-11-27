@@ -164,12 +164,35 @@ public class AdbShellController {
         if (cached > 0) fast.add(cached);
         for (int p : procListenPorts()) fast.add(p);
         fast.add(5555);
+        // tried IN PARALLEL (first success wins): /proc carries EVERY LISTEN
+        // port (engine 4096, bridge 4777, system services...) and a silent
+        // non-adb listener used to stall the sequential scan for its whole
+        // socket timeout - that sequential chain was the 20-30s after pairing.
+        // Now the fast path costs ONE handshake no matter how many wrong
+        // ports exist, and every candidate still lands in `tried`.
+        final java.util.concurrent.atomic.AtomicReference<int[]> wonPort =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<AdbClient> wonClient =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.CountDownLatch won = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.min(8, Math.max(2, fast.size())));
         LinkedHashSet<Integer> tried = new LinkedHashSet<>();
-        for (int port : fast) {
+        for (final int port : fast) {
             tried.add(port);
-            AdbClient c = tryConnectPort(port, key, certPem);
-            if (c != null) return connected(ctx, c, port, "fast");
+            pool.execute(() -> {
+                if (wonClient.get() != null) return;
+                AdbClient c = tryConnectPort(port, key, certPem);
+                if (c != null && wonClient.compareAndSet(null, c)) {
+                    wonPort.set(new int[]{port});
+                    won.countDown();
+                }
+            });
         }
+        won.await(12, TimeUnit.SECONDS);
+        pool.shutdownNow();
+        int[] wp = wonPort.get();
+        if (wp != null) return connected(ctx, wonClient.get(), wp[0], "fast");
         // 3) mDNS（窗口已缩短：NsdManager 1.5s，socket 兜底 1.5s）
         int mdns = discoverMdns(ctx);
         if (mdns > 0 && !tried.contains(mdns)) {
@@ -285,6 +308,14 @@ public class AdbShellController {
         try {
             ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putInt(PREF_PORT, port).apply();
         } catch (Throwable ignored) {}
+    }
+
+    /** Called by AdbPairService's continuous mDNS connect discovery: the port
+     *  lands in the cache BEFORE pairing finishes, so getClient()'s fast path
+     *  is a single handshake instead of a 30s sequential scan. */
+    public static void noteConnectPort(Context ctx, int port) {
+        if (ctx == null || port <= 0) return;
+        cachePort(ctx, port);
     }
 
     private static int discoverMdns(Context ctx) {
