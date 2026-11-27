@@ -73,6 +73,21 @@ public final class ChatItem {
     public int group = 0;
     public long timeMs = 0;
 
+    // ---- render caches -----------------------------------------------------
+    // A row re-binds on every scroll tick. Parsing the same markdown/syntax
+    // again is pure waste, so the parsed result is kept here until the source
+    // string changes (streaming deltas change it on every tick, so live rows
+    // simply miss the cache and stay correct).
+    /** Parsed markdown for the assistant/user body. */
+    public android.text.Spanned mdCache;
+    public String mdSrc;
+    /** Parsed markdown for a finished thinking row body. */
+    public android.text.Spanned mdBodyCache;
+    public String mdBodySrc;
+    /** Highlighted + line-capped code card body. */
+    public CharSequence codeCache;
+    public String codeSrc;
+
     // thinking rows
     public long startMs = 0;
     public long durationMs = 0;

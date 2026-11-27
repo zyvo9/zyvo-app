@@ -49,13 +49,18 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
     public void setBusySession(String id) {
         String next = id == null ? "" : id;
         if (busyId.equals(next)) return;
+        String prev = busyId;
         busyId = next;
-        notifyDataSetChanged();
+        // only the two affected rows redraw - a full rebind restarts every
+        // spinner animation and re-binds the whole drawer
+        notifyRow(prev);
+        notifyRow(busyId);
     }
 
     public SessionAdapter(Context ctx, Listener listener) {
         this.ctx = ctx;
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setItems(List<Session> sessions) {
@@ -65,7 +70,41 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
             for (Session s : sessions) s.pinned = pinned.contains(s.id);
             items.addAll(sessions);
         }
+        rebuild();
         notifyDataSetChanged();
+    }
+
+    /** Re-sorts the visible rows ONCE per data change. The old code called the
+     *  sort inside onBindViewHolder/getItemCount, i.e. once per row per pass. */
+    private void rebuild() {
+        List<Session> out = new ArrayList<>();
+        for (Session s : items) {
+            if (filter.isEmpty()
+                    || (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(filter))) {
+                out.add(s);
+            }
+        }
+        java.util.Collections.sort(out, (a, b) -> {
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            return Long.compare(b.updated, a.updated);
+        });
+        shown.clear();
+        shown.addAll(out);
+    }
+
+    private void notifyRow(String id) {
+        if (id == null || id.isEmpty()) return;
+        for (int i = 0; i < shown.size(); i++) {
+            if (shown.get(i).id.equals(id)) {
+                notifyItemChanged(i);
+                return;
+            }
+        }
+    }
+
+    @Override
+    public long getItemId(int position) {
+        return shown.get(position).id.hashCode();
     }
 
     /** "now" / "5m" / "3h" / "2d" — sidebar-style relative task time. */
@@ -83,30 +122,17 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     public void setFilter(String text) {
         filter = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        rebuild();
         notifyDataSetChanged();
-    }
-
-    private List<Session> visible() {
-        List<Session> out = new ArrayList<>();
-        for (Session s : items) {
-            if (filter.isEmpty()
-                    || (s.title != null && s.title.toLowerCase(Locale.ROOT).contains(filter))) {
-                out.add(s);
-            }
-        }
-        // pinned sessions float to the top, newest below them
-        java.util.Collections.sort(out, (a, b) -> {
-            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-            return Long.compare(b.updated, a.updated);
-        });
-        shown.clear();
-        shown.addAll(out);
-        return shown;
     }
 
     public void setCurrent(String id) {
-        currentId = id == null ? "" : id;
-        notifyDataSetChanged();
+        String next = id == null ? "" : id;
+        if (currentId.equals(next)) return;
+        String prev = currentId;
+        currentId = next;
+        notifyRow(prev);
+        notifyRow(currentId);
     }
 
     @NonNull
@@ -117,7 +143,7 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     @Override
     public void onBindViewHolder(@NonNull VH h, int position) {
-        Session s = visible().get(position);
+        Session s = shown.get(position);
         h.title.setText(s.title);
         h.meta.setText(s.pinned ? "📌 " + relTime(s.updated) : relTime(s.updated));
         // the session with a running agent turn gets the live spinner
@@ -136,7 +162,7 @@ public final class SessionAdapter extends RecyclerView.Adapter<SessionAdapter.VH
 
     @Override
     public int getItemCount() {
-        return visible().size();
+        return shown.size();
     }
 
     static final class VH extends RecyclerView.ViewHolder {

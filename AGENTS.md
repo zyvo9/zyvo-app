@@ -775,3 +775,57 @@ ew_chat_bg still backs the
   `new File(repoRoot, "tools/patch-16k-elf.js")`. Re-verified with `gradlew -q help`
   (config green) and the patcher run directly on the real stripped intermediates
   (arm64/x86_64/armeabi-v7a/x86 all now 16 KB aligned).
+## 2026-11-21 - FULL AUDIT of the 27 local commits (nothing pushed)
+- State: master = 403cae1, origin/master = 1fa221b -> **27 commits ahead, all LOCAL**.
+  Working tree clean except 2 untracked: `app/src/main/assets/skills.tar.gz` (2.0 MB) and
+  `gradle/gradle-daemon-jvm.properties`.
+- Verified green this session: `:app:compileDebugJavaWithJavac` BUILD SUCCESSFUL (online mode;
+  `--offline` fails to resolve AGP 8.13.2 in this environment). All res/*.xml parse OK and every
+  @drawable/@mipmap reference resolves (55-drawable cleanup is safe).
+- Engine `libzyvo.so` (173,184,047 B, 2026-11-21 15:53) contains ALL prompt blocks (Execution policy,
+  Modding core, EARNING, PC CARE, Phone/Android incl. TELEGRAM CHAT BOTS) -> local .so is current.
+- Local APKs in app/build/outputs/apk/debug are STALE (2026-11-16 12:38) - no build after the prompt work.
+- Repo hygiene problem: HEAD commit 403cae1 ADDED `app/src/main/jniLibs/arm64-v8a/libzyvo.so.orig-bak`
+  (173 MB blob, ~59 MB loose) because .gitignore only covers `*.so` / `*.zip`. Before any push:
+  `git rm --cached` that path + add `*.orig-bak` / `*.tar.gz` to .gitignore, then strip the blob
+  from the local history (filter-repo/filter-branch) so 59 MB does not go to GitHub.
+- Big local diffs vs origin: design/ 497 files (Grok icon study + zyvo-brand), app/ 111 files,
+  tools/ (patch-16k-elf.js + system-prompt.md), AGENTS.md.
+## 2026-11-21 - USER RULE: NEVER PUSH (repeated) — SUPERSEDED 2026-11-28
+- "kuno kisu push na, sob local, Android Studio te hobe" -> do NOT push/commit-to-remote
+  on this repo unless he explicitly says so. Everything stays on this PC; he builds/tests
+  in Android Studio. (Local commits are fine only when he asks.)
+- CANCELLED 2026-11-28 by the user - see the 2026-11-28 section below.
+## 2026-11-21 - PERF PASS (chat + drawer, code only, compile green)
+- ChatAdapter: parsed markdown is now CACHED per row (ChatItem.mdCache/mdSrc,
+  mdBodyCache/mdBodySrc for finished thinking rows, codeCache/codeSrc for the code
+  card). Scroll no longer re-parses markdown or re-highlights code. Uses
+  `markwon.toMarkdown` + `setParsedMarkdown` (verified in Markwon 4.6.2 via javap).
+  density/colors/interpolator are cached fields - NOTE: density must be assigned
+  BEFORE `Markwon.builder(...).build()` because MarkwonTheme calls `dp()`.
+- SessionAdapter: the old `visible()` was called inside onBindViewHolder AND
+  getItemCount, i.e. the whole session list was filtered + sorted once per row per
+  pass. Now `rebuild()` runs only on setItems/setFilter; stable ids enabled;
+  setCurrent/setBusySession notify only the two affected rows (no full rebind, so the
+  busy spinner no longer restarts).
+- ChatFragment: revealTick now walks a `revealPending` LinkedHashSet instead of the
+  whole transcript 60x/s (queue fed by applyDelta + the part-sync path, cleared on
+  session switch / flushReveal). Reveal pacing itself is UNCHANGED (16 ms, /30, cap 120).
+- Both RecyclerViews: setHasFixedSize(true) + item view cache (chat 20, drawer 16).
+- Verified: `:app:compileDebugJavaWithJavac` BUILD SUCCESSFUL. No APK built (user rule).
+
+## 2026-11-28 - WORKFLOW CHANGED (user): zyvo verifies + commits + pushes, GitHub CI builds
+- User cancelled BOTH old rules ("zyvo never runs gradlew" + "never push"): "sob check
+  kroe verify kore github e commit build koro". Android Studio / Java / Android SDK are
+  NO LONGER installed on this PC (Program Files\Android and AppData\Local\Android gone,
+  no java on PATH, no JDK in the registry) -> GitHub Actions "Zyvo Termux Build" is the
+  ONLY compiler now.
+- Pre-push gate that still works without Java: all res XML parse, brace/paren balance of
+  changed Java, secret scan of everything that would be published, CI asset URLs alive.
+- Standing user instruction: the flagged findings STAY AS-IS, do not fix ("ami e disi"):
+  garbled double-encoded chars in zyvo_strings.xml (Â· / â†’) + AGENTS.md, the bundled adb
+  key (assets/shizuku/adbkey, in origin history since the first push), stock Termux
+  workflows (Unit tests + Dependency submission) failing on every push.
+- Push mechanics 2026-11-28: tip commit amended (403cae1 -> 8454fc5) to drop the 173 MB
+  `libzyvo.so.orig-bak` blob (GitHub rejects >100 MB files); file kept on disk;
+  `*.orig-bak` added to .gitignore. 26 commits pushed as one fast-forward to master.

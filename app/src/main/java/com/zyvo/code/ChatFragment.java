@@ -198,16 +198,28 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
     /** Reveals streamed assistant text a few characters at a time (no jumps). */
     private boolean revealScheduled;
     private boolean scrollQueued;
+    /** Rows that still have hidden text. Only these are visited per frame; the
+     *  old tick walked the whole transcript 60x/s even when nothing streamed. */
+    private final java.util.LinkedHashSet<ChatItem> revealPending = new java.util.LinkedHashSet<>();
     private final Runnable revealTick = new Runnable() {
         @Override
         public void run() {
             revealScheduled = false;
             boolean active = false;
             ChatItem finished = null;
-            for (int i = 0; i < items.size(); i++) {
-                ChatItem it = items.get(i);
-                if (it.kind != ChatItem.ASSISTANT) continue;
-                if (it.fullText == null || it.shown >= it.fullText.length()) continue;
+            java.util.Iterator<ChatItem> pending = revealPending.iterator();
+            while (pending.hasNext()) {
+                ChatItem it = pending.next();
+                if (it.kind != ChatItem.ASSISTANT || it.fullText == null
+                        || it.shown >= it.fullText.length()) {
+                    pending.remove();
+                    continue;
+                }
+                int i = items.indexOf(it);
+                if (i < 0) { // split into segments while revealing
+                    pending.remove();
+                    continue;
+                }
                 int backlog = it.fullText.length() - it.shown;
                 // steady CLI-like flow: every burst unfolds over ~half a second
                 // instead of popping in at once, and the drain rate accelerates
@@ -227,6 +239,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 it.shown = next;
                 it.text = it.fullText.substring(0, next);
                 if (it.shown >= it.fullText.length()) {
+                    pending.remove();
                     // finished: one full bind for markdown, copy button, duration
                     adapter.notifyItemChanged(i);
                     // part already completed: markdown + code-card split land in
@@ -448,6 +461,10 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         adapter.setNoticeAction(this::retryLast);
         adapter.setMessageActions(this::regenerateReply);
         list.setLayoutManager(new LinearLayoutManager(requireContext()));
+        // the window size never changes with content; recycled rows stay cached
+        // so scrolling back does not re-bind from scratch
+        list.setHasFixedSize(true);
+        list.setItemViewCacheSize(20);
         // the default change cross-fade draws the old and the new row on top of
         // each other mid-stream - reads as doubled text; swap instantly instead
         if (list.getItemAnimator() instanceof androidx.recyclerview.widget.DefaultItemAnimator) {
@@ -515,6 +532,8 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                 }
             });
             sessionList.setLayoutManager(new LinearLayoutManager(requireContext()));
+            sessionList.setHasFixedSize(true);
+            sessionList.setItemViewCacheSize(16);
             sessionList.setAdapter(sessionAdapter);
         }
 
@@ -1302,6 +1321,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
             // the end-of-part snapshot is authoritative, but never truncate what
             // the token deltas already streamed in
             if (text.length() >= item.fullText.length()) item.fullText = text;
+            if (item.fullText.length() > item.shown) revealPending.add(item);
             turnAssistantKey = pid;
             JsonObject ptime = part.has("time") && part.get("time").isJsonObject()
                     ? part.getAsJsonObject("time") : null;
@@ -1529,6 +1549,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         } else {
             item.fullText = (item.fullText == null ? "" : item.fullText) + delta;
             if (item.shown == 0) item.text = "";
+            revealPending.add(item);
             startReveal();
         }
     }
@@ -2242,6 +2263,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         prefs.setLastSessionId("");
         sseLoaded = false;
         items.clear();
+        revealPending.clear();
         byKey.clear();
         messageRoles.clear();
         partTypes.clear();
@@ -2265,6 +2287,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
         prefs.setLastSessionId(id);
         sseLoaded = false;
         items.clear();
+        revealPending.clear();
         byKey.clear();
         messageRoles.clear();
         partTypes.clear();
@@ -2456,6 +2479,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
                     if (loadingView != null) loadingView.setVisibility(View.GONE);
                     if (replayTokens > 0) ctxTokens = replayTokens;
                     items.clear();
+                    revealPending.clear();
                     byKey.clear();
                     partTypes.clear();
                     pendingDeltas.clear();
@@ -2748,6 +2772,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     /** Shows the remaining text immediately (turn finished). */
     private void flushReveal() {
+        revealPending.clear();
         ui.removeCallbacks(revealTick);
         revealScheduled = false;
         for (int i = 0; i < items.size(); i++) {

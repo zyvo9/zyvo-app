@@ -74,10 +74,21 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private final boolean reduceMotion;
     private final SimpleDateFormat timeFmt = new SimpleDateFormat("h:mm a", Locale.getDefault());
     private final SimpleDateFormat dayFmt = new SimpleDateFormat("MMM d, h:mm a", Locale.getDefault());
+    /** Hot-path constants: bindings run per scroll frame, so do not re-query
+     *  resources/colors on every bind. */
+    private final float density;
+    private final int colorTextPrimary;
+    private final int colorDanger;
+    private static final android.view.animation.DecelerateInterpolator EASE_OUT =
+            new android.view.animation.DecelerateInterpolator(1.8f);
 
     public ChatAdapter(Context ctx, List<ChatItem> items) {
         this.ctx = ctx;
         this.items = items;
+        // must be ready before MarkwonTheme is configured below (dp() uses it)
+        this.density = ctx.getResources().getDisplayMetrics().density;
+        this.colorTextPrimary = ContextCompat.getColor(ctx, R.color.text_primary);
+        this.colorDanger = ContextCompat.getColor(ctx, R.color.danger);
         this.markwon = Markwon.builder(ctx)
                 .usePlugin(StrikethroughPlugin.create())
                 .usePlugin(TablePlugin.create(ctx))
@@ -110,15 +121,36 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         this.reduceMotion = scale == 0f;
     }
 
+    /**
+     * Parsed markdown for a finished string, cached on the row itself. Without
+     * this every scroll re-parses the whole reply, which is the main cause of
+     * jank in a long chat.
+     */
+    private android.text.Spanned cachedMarkdown(ChatItem item, String src, boolean bodySlot) {
+        String s = src == null ? "" : src;
+        if (bodySlot) {
+            if (item.mdBodyCache != null && s.equals(item.mdBodySrc)) return item.mdBodyCache;
+            android.text.Spanned parsed = markwon.toMarkdown(s);
+            item.mdBodySrc = s;
+            item.mdBodyCache = parsed;
+            return parsed;
+        }
+        if (item.mdCache != null && s.equals(item.mdSrc)) return item.mdCache;
+        android.text.Spanned parsed = markwon.toMarkdown(s);
+        item.mdSrc = s;
+        item.mdCache = parsed;
+        return parsed;
+    }
+
     /** Small entrance for a row the first time it appears; never on re-bind. */
     private void animateIn(View v, ChatItem item) {
         if (item == null || item.animated) return;
         item.animated = true;
         if (reduceMotion) return;
         v.setAlpha(0f);
-        v.setTranslationY(20f * ctx.getResources().getDisplayMetrics().density);
+        v.setTranslationY(20f * density);
         v.animate().alpha(1f).translationY(0f).setDuration(240)
-                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
+                .setInterpolator(EASE_OUT).start();
     }
 
     @Override
@@ -278,7 +310,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     private void bindMessage(MessageVH h, ChatItem item) {
         animateIn(h.itemView, item);
         if (item.kind == ChatItem.USER) {
-            markwon.setMarkdown(h.text, item.text == null ? "" : item.text);
+            markwon.setParsedMarkdown(h.text, cachedMarkdown(item, item.text, false));
             h.time.setText(stamp(item.timeMs));
             h.time.setVisibility(TextUtils.isEmpty(h.time.getText()) ? View.GONE : View.VISIBLE);
             return;
@@ -291,10 +323,9 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
             // is re-rendered as full markdown (headings, tables, bullets).
             h.text.setText(withCaret(plainMarkdown(item.text)));
         } else {
-            markwon.setMarkdown(h.text, item.text == null ? "" : item.text);
+            markwon.setParsedMarkdown(h.text, cachedMarkdown(item, item.text, false));
         }
-        h.text.setTextColor(ContextCompat.getColor(ctx,
-                item.error ? R.color.danger : R.color.text_primary));
+        h.text.setTextColor(item.error ? colorDanger : colorTextPrimary);
 
         boolean hasText = !TextUtils.isEmpty(item.text) && !revealing;
         // a reply split into several pieces keeps ONE footer (the last piece)
@@ -309,7 +340,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                     h.actions.setTranslationY(0f);
                 } else {
                     h.actions.setAlpha(0f);
-                    h.actions.setTranslationY(6f * ctx.getResources().getDisplayMetrics().density);
+                    h.actions.setTranslationY(6f * density);
                     h.actions.animate().alpha(1f).translationY(0f).setDuration(170)
                             .setStartDelay(60)
                             .setInterpolator(new android.view.animation.DecelerateInterpolator())
@@ -510,7 +541,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
                 h.body.setEllipsize(null);
                 h.body.setTextSize(13f);
                 h.body.setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary));
-                markwon.setMarkdown(h.body, item.text);
+                markwon.setParsedMarkdown(h.body, cachedMarkdown(item, item.text, true));
             }
         }
 
@@ -560,7 +591,7 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
     }
 
     private int dp(int v) {
-        return Math.round(v * ctx.getResources().getDisplayMetrics().density);
+        return Math.round(v * density);
     }
 
     // ------------------------------------------------------------- summary
@@ -1407,7 +1438,17 @@ public final class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHol
         final String lang = item.lang.isEmpty() ? "code" : item.lang;
         h.lang.setText(lang.toUpperCase(java.util.Locale.US));
         // Long code scrolls inside a capped card - the row never grows to a full screen.
-        h.body.setText(capSpans(syntaxBlock(item.text), 200));
+        // Highlighting a big block is expensive, so the styled result is cached
+        // on the row: scrolling only re-sets it, it does not re-tokenize.
+        CharSequence styled;
+        if (item.codeCache != null && item.text.equals(item.codeSrc)) {
+            styled = item.codeCache;
+        } else {
+            styled = capSpans(syntaxBlock(item.text), 200);
+            item.codeSrc = item.text;
+            item.codeCache = styled;
+        }
+        h.body.setText(styled);
         h.body.setVisibility(View.VISIBLE);
         h.body.setMaxLines(Integer.MAX_VALUE);
         h.body.setEllipsize(null);
