@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -13,12 +15,14 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.core.content.ContextCompat;
-
 /**
  * Shizuku-style pairing dialog: opens the system wireless debugging page,
- * then the user types the 6-digit pairing code (and, if auto-discovery fails,
- * the connect port). Pair runs against 127.0.0.1 — the phone pairs with itself.
+ * then the user just types the 6-digit pairing code. The port is discovered
+ * LIVE by AdbPairService's continuous mDNS watcher (this screen mirrors its
+ * status and auto-fills the port); a manual port stays optional for ROMs
+ * where mDNS is blocked. Pair runs against 127.0.0.1 — the phone pairs with
+ * itself. Pairing itself happens in the SERVICE so the flow also works when
+ * the code is typed straight on the notification.
  */
 public class AdbPairActivity extends Activity {
 
@@ -28,6 +32,37 @@ public class AdbPairActivity extends Activity {
     private EditText connectPort;
     private Button action;
     private Button disconnect;
+    private boolean connectTried;
+
+    private final Handler poll = new Handler(Looper.getMainLooper());
+    private final Runnable pollTick = new Runnable() {
+        @Override
+        public void run() {
+            if (isFinishing() || isDestroyed()) return;
+            // mirror the service's live status (notification text)
+            String s = AdbPairService.liveStatus;
+            if (s != null && !s.isEmpty()) status.setText(s);
+            // auto-fill the pairing port the moment discovery resolves it
+            int p = AdbPairService.livePairPort;
+            if (p > 0 && System.currentTimeMillis() - AdbPairService.livePairPortAt < 60_000
+                    && pairPort.getText().toString().trim().isEmpty()) {
+                pairPort.setText(String.valueOf(p));
+            }
+            // paired but not connected, and the user typed a manual connect port
+            if (s != null && s.contains("connect failed") && !connectTried) {
+                String ct = connectPort.getText().toString().trim();
+                if (!ct.isEmpty()) {
+                    connectTried = true;
+                    try {
+                        AdbShellController.connectManual(AdbPairActivity.this,
+                                Integer.parseInt(ct));
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            poll.postDelayed(this, 700);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,11 +90,11 @@ public class AdbPairActivity extends Activity {
         status.setPadding(0, pad / 2, 0, pad / 2);
         root.addView(status);
 
-        pairPort = field(root, "Pairing port (auto-filled if found)");
+        pairPort = field(root, "Pairing port (auto-detected)");
         code = field(root, "6-digit pairing code");
         code.setInputType(InputType.TYPE_CLASS_NUMBER);
 
-        connectPort = field(root, "Connect port (only if auto-discovery fails)");
+        connectPort = field(root, "Connect port (only if auto-connect fails)");
         connectPort.setInputType(InputType.TYPE_CLASS_NUMBER);
 
         action = button("Pair & connect");
@@ -90,6 +125,13 @@ public class AdbPairActivity extends Activity {
         }
 
         refreshState();
+        poll.post(pollTick);
+    }
+
+    @Override
+    protected void onDestroy() {
+        poll.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     private EditText field(LinearLayout root, String hint) {
@@ -119,7 +161,12 @@ public class AdbPairActivity extends Activity {
 
     private void refreshState() {
         boolean paired = PairState.isPaired(this);
-        int port = AdbShellController.findPairPort(this);
+        // the service's live discovery fills this within ms of the dialog
+        // opening; only fall back to an on-demand hunt when it has nothing
+        int port = AdbPairService.livePairPort;
+        if (port <= 0 || System.currentTimeMillis() - AdbPairService.livePairPortAt > 30_000) {
+            port = AdbShellController.findPairPort(this);
+        }
         if (port > 0 && pairPort.getText().toString().trim().isEmpty()) {
             pairPort.setText(String.valueOf(port));
         }
@@ -129,56 +176,25 @@ public class AdbPairActivity extends Activity {
                     ? "Connected ✓ — the AI shell can run adb commands."
                     : "Paired — enable Wireless debugging and pair again if the port changed.");
         } else {
-            AdbPairService.update(this, "Tap to enter the pairing code");
+            AdbPairService.update(this, "Searching for the pairing screen…");
         }
     }
 
+    /** No more hard port requirement: the service pairs the discovered port
+     *  first, then falls back to candidates + same-code retries on its own. */
     private void runPair() {
         String codeText = code.getText().toString().trim().replace(" ", "");
-        String portText = pairPort.getText().toString().trim();
-        action.setEnabled(false);
-        status.setText("Pairing…");
-        AdbPairService.update(this, "Pairing…");
-        final int port;
-        try {
-            port = Integer.parseInt(portText);
-        } catch (Exception e) {
-            status.setText("Type the pairing PORT shown on the pairing screen.");
-            action.setEnabled(true);
+        if (codeText.length() != 6) {
+            status.setText("Type the 6-digit pairing code first.");
             return;
         }
-        new Thread(() -> {
-            AdbPairClient.Result r = AdbPairClient.pair("127.0.0.1", port, codeText);
-            runOnUiThread(() -> {
-                action.setEnabled(true);
-                if (r.ok) {
-                    PairState.markPaired(this);
-                    status.setText("Paired ✓ — connecting…");
-                    AdbPairService.update(this, "Paired — connecting…");
-                    new Thread(() -> {
-                        final String manual = connectPort.getText().toString().trim();
-                        boolean up;
-                        if (!manual.isEmpty()) {
-                            try {
-                                up = AdbShellController.connectManual(this, Integer.parseInt(manual));
-                            } catch (Exception e) {
-                                up = false;
-                            }
-                        } else {
-                            up = AdbShellController.ensureConnected();
-                        }
-                        final boolean ok = up;
-                        runOnUiThread(() -> {
-                            status.setText(ok
-                                    ? "Connected ✓ — the AI shell can run adb commands."
-                                    : "Paired ✓ — but connect failed. Type the connect port from the Wireless debugging screen and tap Pair & connect again.");
-                        });
-                    }).start();
-                } else {
-                    status.setText("Pair failed: " + r.message
-                            + "\nReload the pairing screen (the port changes every time) and try again.");
-                }
-            });
-        }).start();
+        int manual = -1;
+        try {
+            manual = Integer.parseInt(pairPort.getText().toString().trim());
+        } catch (Exception ignored) {
+        }
+        connectTried = false;
+        status.setText("Pairing… keep the pairing screen open");
+        AdbPairService.requestPair(this, codeText, manual);
     }
 }
