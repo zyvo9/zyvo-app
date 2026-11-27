@@ -154,61 +154,23 @@ public class AdbShellController {
         if (!keyFile.exists() || !certFile.exists()) return null;
         PrivateKey key = AdbClient.loadKey(readText(keyFile));
         String certPem = readText(certFile);
-        // 2) FAST PATH FIRST（Shizuku-speed）：缓存端口 + /proc 监听端口（瞬时、
-        //    零网络等待）+ 明文 5555。无线调试端口永远是一个回环 LISTEN 端口，
-        //    /proc/net/tcp{,6} 一步就能锁定它 —— 命中时整条链路 < 1s。
-        //    旧流程先等 mDNS（NsdManager 3.5s + socket 兜底再 6s）再连接，
-        //    即使缓存端口本来就能连上。
-        LinkedHashSet<Integer> fast = new LinkedHashSet<>();
+        // ONE handshake, Shizuku style: the port was seeded by AdbPairService's
+        // continuous connect discovery BEFORE pairing finished. Try it once;
+        // on failure one quick on-demand mDNS query; then a clean fail - the
+        // user retries and the next attempt reads whatever discovery refreshed.
+        // No /proc sweeps, no 5555 guessing, no port scans.
         int cached = getCachedPort(ctx);
-        if (cached > 0) fast.add(cached);
-        for (int p : procListenPorts()) fast.add(p);
-        fast.add(5555);
-        // tried IN PARALLEL (first success wins): /proc carries EVERY LISTEN
-        // port (engine 4096, bridge 4777, system services...) and a silent
-        // non-adb listener used to stall the sequential scan for its whole
-        // socket timeout - that sequential chain was the 20-30s after pairing.
-        // Now the fast path costs ONE handshake no matter how many wrong
-        // ports exist, and every candidate still lands in `tried`.
-        final java.util.concurrent.atomic.AtomicReference<int[]> wonPort =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.concurrent.atomic.AtomicReference<AdbClient> wonClient =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.concurrent.CountDownLatch won = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(
-                Math.min(8, Math.max(2, fast.size())));
-        LinkedHashSet<Integer> tried = new LinkedHashSet<>();
-        for (final int port : fast) {
-            tried.add(port);
-            pool.execute(() -> {
-                if (wonClient.get() != null) return;
-                AdbClient c = tryConnectPort(port, key, certPem);
-                if (c != null && wonClient.compareAndSet(null, c)) {
-                    wonPort.set(new int[]{port});
-                    won.countDown();
-                }
-            });
+        if (cached > 0) {
+            AdbClient c = tryConnectPort(cached, key, certPem);
+            if (c != null) return connected(ctx, c, cached, "cached");
         }
-        won.await(12, TimeUnit.SECONDS);
-        pool.shutdownNow();
-        int[] wp = wonPort.get();
-        if (wp != null) return connected(ctx, wonClient.get(), wp[0], "fast");
-        // 3) mDNS（窗口已缩短：NsdManager 1.5s，socket 兜底 1.5s）
         int mdns = discoverMdns(ctx);
-        if (mdns > 0 && !tried.contains(mdns)) {
-            tried.add(mdns);
+        if (mdns > 0 && mdns != cached) {
             AdbClient c = tryConnectPort(mdns, key, certPem);
             if (c != null) return connected(ctx, c, mdns, "mdns");
         }
-        // 4) 最后兜底：全量监听/范围扫描（/proc 不可读时）
-        for (int port : scanLocalPorts()) {
-            if (tried.contains(port)) continue;
-            tried.add(port);
-            AdbClient c = tryConnectPort(port, key, certPem);
-            if (c != null) return connected(ctx, c, port, "scan");
-        }
         lastFailMs = System.currentTimeMillis();
-        writeDiag(ctx, "no port connected. tried=" + tried + " mdns=" + mdns);
+        writeDiag(ctx, "no connect - cached=" + cached + " mdns=" + mdns);
         return null;
     }
 
@@ -423,32 +385,6 @@ public class AdbShellController {
         return ports;
     }
 
-    /** 候选端口：/proc 监听列表优先（覆盖 IPv6 监听）；为空时并发范围扫描兜底。 */
-    private static java.util.List<Integer> pairPortCandidates() {
-        java.util.List<Integer> fromProc = new java.util.ArrayList<>(procListenPorts());
-        if (!fromProc.isEmpty()) return fromProc;
-        final int from = 30000, to = 65535;
-        final java.util.List<Integer> open = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-        final ExecutorService pool = Executors.newFixedThreadPool(96);
-        try {
-            for (int port = from; port <= to; port++) {
-                if (open.size() >= 8) break;
-                final int p = port;
-                pool.execute(() -> {
-                    if (open.size() >= 8) return;
-                    if (canConnectLoopback(p)) open.add(p);
-                });
-            }
-            pool.shutdown();
-            pool.awaitTermination(15, TimeUnit.SECONDS);
-        } catch (Throwable t) {
-            Log.d(TAG, "scan pair ports failed: " + t.getMessage());
-        } finally {
-            pool.shutdownNow();
-        }
-        return new java.util.ArrayList<>(open);
-    }
-
     /** 回环连通性探测（IPv4 + IPv6 双栈）。 */
     private static boolean canConnectLoopback(int port) {
         for (String host : new String[]{"127.0.0.1", "::1"}) {
@@ -460,43 +396,6 @@ public class AdbShellController {
         return false;
     }
 
-    /** 返回全部候选端口，TLS 配对端口优先（适配 IPv4 与 IPv6 监听）。 */
-    public static java.util.List<Integer> scanPairPorts() {
-        java.util.List<Integer> candidates = pairPortCandidates();
-        final java.util.List<Integer> tlsFirst = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-        final java.util.List<Integer> rest = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-        if (!candidates.isEmpty()) {
-            final ExecutorService pool = Executors.newFixedThreadPool(Math.min(24, Math.max(4, candidates.size())));
-            try {
-                for (int p : candidates) {
-                    final int port = p;
-                    pool.execute(() -> {
-                        if (isPairingTlsPort(port)) tlsFirst.add(port); else rest.add(port);
-                    });
-                }
-                pool.shutdown();
-                pool.awaitTermination(12, TimeUnit.SECONDS);
-            } catch (Throwable t) {
-                Log.d(TAG, "probe pair ports failed: " + t.getMessage());
-            } finally {
-                pool.shutdownNow();
-            }
-        }
-        java.util.Collections.sort(tlsFirst);
-        java.util.Collections.sort(rest);
-        tlsFirst.addAll(rest);
-        Log.d(TAG, "scanPairPorts -> " + tlsFirst);
-        return tlsFirst;
-    }
-
-    /** 兼容旧调用：返回第一个 TLS 配对端口，无则 -1。 */
-    public static int scanPairPort() {
-        java.util.List<Integer> list = scanPairPorts();
-        if (list.isEmpty()) return -1;
-        int first = list.get(0);
-        return isPairingTlsPort(first) ? first : -1;
-    }
-
     /** 返回该端口可完成 TLS 探测的回环地址（"127.0.0.1"/"::1"），探测失败返回 null。 */
     public static String pairHostFor(int port) {
         for (String host : new String[]{"127.0.0.1", "::1"}) {
@@ -506,17 +405,6 @@ public class AdbShellController {
             } catch (Throwable ignored) {}
         }
         return null;
-    }
-
-    /** 连接后 TLS 探测。 */
-    private static boolean isPairingTlsPort(int port) {
-        for (String host : new String[]{"127.0.0.1", "::1"}) {
-            try (Socket s = new Socket()) {
-                s.connect(new InetSocketAddress(InetAddress.getByName(host), port), 200);
-                if (isPairingTlsPort(s)) return true;
-            } catch (Throwable ignored) {}
-        }
-        return false;
     }
 
     /** TLS 探测（已连接）：发送完整最小 TLS1.2 ClientHello，配对端口回 ServerHello（首字节 0x16），连接端口回明文 adb 协议。 */

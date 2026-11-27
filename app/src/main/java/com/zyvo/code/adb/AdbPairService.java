@@ -19,14 +19,6 @@ import androidx.core.app.NotificationCompat;
 
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Shizuku-style wireless-debugging pairing — fully automatic.
@@ -320,77 +312,31 @@ public class AdbPairService extends Service {
 
     // ------------------------------------------------------------- pairing
 
-    /** Single pairing brain: discovered port first, then candidate rounds. */
+    /** ONE handshake against the discovered port - Shizuku style. The port is
+     *  known before the code arrives (continuous discovery), so this is a
+     *  single pair attempt: success connects, failure is a clean message the
+     *  user can retry. No port scans, no candidate pools, no retry loops. */
     private void pairFlow(String code, int preferredPort) {
         pairing = true;
-        update(this, "Pairing… keep the pairing screen open");
         final String c = code;
         new Thread(() -> {
             try {
-                // Shizuku fast path: one handshake against the already-known port
-                if (preferredPort > 0) {
-                    update(this, "Pairing… port " + preferredPort);
-                    String host = AdbShellController.pairHostFor(preferredPort);
-                    if (host == null) host = "127.0.0.1";
-                    AdbPairClient.Result fast = AdbPairClient.pair(host, preferredPort, c);
-                    if (fast != null && fast.ok) {
-                        finishPair();
-                        return;
-                    }
+                int port = preferredPort > 0 ? preferredPort : manualPort;
+                if (port <= 0) {
+                    update(this, "No pairing port detected — reopen 'Pair device with"
+                            + " pairing code' and try again");
+                    return;
                 }
-
-                // fallback + port-rotation recovery: the SAME code stays valid
-                // while the dialog is open, so keep retrying new ports with it
-                long deadline = System.currentTimeMillis() + 40_000L;
-                Set<Integer> tried = new HashSet<>();
-                LinkedHashSet<Integer> scanned = new LinkedHashSet<>();
-                long lastScanAt = 0;
-                while (isRunning && System.currentTimeMillis() < deadline) {
-                    LinkedHashSet<Integer> candidates = new LinkedHashSet<>();
-                    if (manualPort > 0) candidates.add(manualPort);
-                    if (livePairPort > 0
-                            && System.currentTimeMillis() - livePairPortAt < 60_000) {
-                        candidates.add(livePairPort);
-                    }
-                    if (scanned.isEmpty() || System.currentTimeMillis() - lastScanAt > 8_000) {
-                        scanned = new LinkedHashSet<>(AdbShellController.scanPairPorts());
-                        lastScanAt = System.currentTimeMillis();
-                    }
-                    candidates.addAll(scanned);
-                    candidates.removeAll(tried);
-                    if (!candidates.isEmpty()) {
-                        update(this, "Pairing… trying " + candidates.size() + " port(s)");
-                        ExecutorService pool = Executors.newFixedThreadPool(
-                                Math.min(8, Math.max(2, candidates.size())));
-                        final AtomicReference<AdbPairClient.Result> winner =
-                                new AtomicReference<>();
-                        final CountDownLatch win = new CountDownLatch(1);
-                        for (final int p : candidates) {
-                            pool.execute(() -> {
-                                if (winner.get() != null) return;
-                                try {
-                                    String host = AdbShellController.pairHostFor(p);
-                                    if (host == null) host = "127.0.0.1";
-                                    AdbPairClient.Result r = AdbPairClient.pair(host, p, c);
-                                    if (r.ok && winner.compareAndSet(null, r)) win.countDown();
-                                } catch (Throwable ignored) {
-                                }
-                            });
-                        }
-                        win.await(15, TimeUnit.SECONDS);
-                        pool.shutdownNow();
-                        tried.addAll(candidates);
-                        if (winner.get() != null && winner.get().ok) {
-                            finishPair();
-                            return;
-                        }
-                        update(this, "Pair failed on those ports — keep the pairing"
-                                + " screen open, retrying with the same code…");
-                    }
-                    Thread.sleep(1200);
+                update(this, "Pairing… port " + port);
+                String host = AdbShellController.pairHostFor(port);
+                if (host == null) host = "127.0.0.1";
+                AdbPairClient.Result r = AdbPairClient.pair(host, port, c);
+                if (r != null && r.ok) {
+                    finishPair();
+                } else {
+                    update(this, "Pair failed — reload the pairing screen (new code)"
+                            + " and try again");
                 }
-                update(this, "Pair failed — reload the pairing screen (port rotates)"
-                        + " and type the new code");
             } catch (Throwable t) {
                 update(this, "Pair failed: " + (t.getMessage() != null ? t.getMessage() : t.toString()));
             } finally {
