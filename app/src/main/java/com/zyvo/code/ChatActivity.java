@@ -182,12 +182,13 @@ public final class ChatActivity extends AppCompatActivity {
         } catch (Throwable ignored) {}
     }
 
-    /** GitHub release check: a newer apk-NN exists -> offer it. Silent when same. */
+    /** GitHub release check: a newer apk-NN exists -> offer it. Silent when same.
+     *  Points at zyvo-app — the repo the user consolidated all work into. */
     private void checkUpdate() {
         java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 java.net.URL url = new java.net.URL(
-                        "https://api.github.com/repos/zyvo9/zyvo-termux/releases/latest");
+                        "https://api.github.com/repos/zyvo9/zyvo-app/releases/latest");
                 java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
                 conn.setRequestProperty("Accept", "application/vnd.github+json");
                 conn.setConnectTimeout(8000);
@@ -219,7 +220,7 @@ public final class ChatActivity extends AppCompatActivity {
                             .setPositiveButton("Open", (d, w) -> {
                                 try {
                                     startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://github.com/zyvo9/zyvo-termux/releases/tag/apk-"
+                                            android.net.Uri.parse("https://github.com/zyvo9/zyvo-app/releases/tag/apk-"
                                                     + latest)));
                                 } catch (Throwable ignored) {}
                             })

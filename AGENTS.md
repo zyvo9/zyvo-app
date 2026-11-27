@@ -829,3 +829,17 @@ ew_chat_bg still backs the
 - Push mechanics 2026-11-28: tip commit amended (403cae1 -> 8454fc5) to drop the 173 MB
   `libzyvo.so.orig-bak` blob (GitHub rejects >100 MB files); file kept on disk;
   `*.orig-bak` added to .gitignore. 26 commits pushed as one fast-forward to master.
+
+## 2026-11-28 - REPO CONSOLIDATION (user decision)
+- Overlapping repos existed: zyvo-app (11-11 identity fork com.zyvo.app, never built),
+  zyvo-code (11-12 small experiment, superseded), zyvo-termux (active, apk-96 + secrets).
+- User chose SAME-APP updates (com.termux identity stays, no new package) with the work
+  living in **zyvo9/zyvo-app** ("zyvo app" repo). zyvo-code DELETED (user-approved).
+  zyvo-termux KEPT: it holds apk-90..96 release history and the update-checker URL of
+  already-installed apps.
+- Local remotes: origin = zyvo-termux, `app` = zyvo-app. **Future pushes go to `app`**
+  (zyvo-app, default branch master after consolidation); zyvo-termux only when the user
+  explicitly asks for a mirror.
+- ChatActivity.checkUpdate() now reads zyvo9/zyvo-app releases for future builds.
+- zyvo-app needs the ZYVO_OPENCODE_KEY secret re-added by the user (GitHub secrets
+  cannot be read/copied via API) - until then its APKs build WITHOUT the lane key.
