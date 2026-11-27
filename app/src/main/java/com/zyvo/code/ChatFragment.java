@@ -2450,8 +2450,7 @@ public final class ChatFragment extends Fragment implements EngineManager.Listen
 
     private void openSettings() {
         try {
-            startActivity(new Intent(requireContext(),
-                    Class.forName("com.termux.app.activities.SettingsActivity")));
+            startActivity(new Intent(requireContext(), SettingsActivity.class));
         } catch (Throwable t) {
             UiUtil.toast(requireContext(), "Settings are not available");
         }

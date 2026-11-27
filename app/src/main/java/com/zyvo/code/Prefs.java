@@ -49,10 +49,26 @@ public final class Prefs {
         return !opencodeKey().isEmpty();
     }
 
-    /** Key for the built-in opencode lane, injected at build time. */
+    /** Key for the built-in opencode lane: the user's Settings key wins over
+     *  the one baked in at build time. */
     public String opencodeKey() {
+        String user = userOpencodeKey().trim();
+        if (!user.isEmpty()) return user;
         String baked = BuildConfig.ZYVO_OPENCODE_KEY;
         return baked == null ? "" : baked.trim();
+    }
+
+    /** Key the user pasted in Settings ("" = use the baked lane key). */
+    public String userOpencodeKey() {
+        return sp.getString("opencode_key", "");
+    }
+
+    public boolean hasCustomKey() {
+        return !userOpencodeKey().trim().isEmpty();
+    }
+
+    public void setOpencodeKey(String key) {
+        sp.edit().putString("opencode_key", key == null ? "" : key.trim()).apply();
     }
 
     public void setModel(String providerId, String modelId) {

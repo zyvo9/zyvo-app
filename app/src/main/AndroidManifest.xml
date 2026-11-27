@@ -201,6 +201,10 @@
             android:exported="false" />
 
 
+        <activity
+            android:name="com.zyvo.code.SettingsActivity"
+            android:exported="false" />
+
         <service
             android:name="com.zyvo.code.EngineService"
             android:exported="false"

@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,6 +15,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ScrollView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -120,6 +122,37 @@ public final class ChatActivity extends AppCompatActivity {
 
         batteryPrompt();
         checkUpdate();
+        // onboarding needs the window up first, or the dialog has no token
+        findViewById(R.id.drawer_layout).post(this::onboarding);
+    }
+
+    /** First run: one welcome dialog — what the app is, what the free lane does. */
+    private void onboarding() {
+        try {
+            Prefs p = new Prefs(this);
+            if (p.onboardingDone()) return;
+            int pad = Math.round(20 * getResources().getDisplayMetrics().density);
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setPadding(pad, pad / 2, pad, 0);
+            TextView body = new TextView(this);
+            body.setTextSize(15);
+            body.setTextColor(Color.parseColor("#E4E4EB"));
+            body.setLineSpacing(Math.round(3 * getResources().getDisplayMetrics().density), 1f);
+            body.setText("Your AI agent runs on THIS phone.\n\n"
+                    + "• Ask anything — code, files, modding, earning bots\n"
+                    + "• Tools really run here: bash, files, web, adb\n"
+                    + "• Free model lane can rate-limit — switching mobile data (fresh IP) fixes it\n"
+                    + "• Long tasks keep running with the screen off");
+            box.addView(body);
+            new AlertDialog.Builder(this)
+                    .setTitle("Welcome to Zyvo Code")
+                    .setView(box)
+                    .setPositiveButton("Start", (d, w) -> p.setOnboardingDone())
+                    .setCancelable(false)
+                    .show();
+        } catch (Throwable ignored) {
+        }
     }
 
     /** Long background tasks die under battery optimization — ask once. */
@@ -223,8 +256,7 @@ public final class ChatActivity extends AppCompatActivity {
 
     private void openSettings() {
         try {
-            startActivity(new Intent(this,
-                    Class.forName("com.termux.app.activities.SettingsActivity")));
+            startActivity(new Intent(this, SettingsActivity.class));
         } catch (Throwable t) {
             UiUtil.toast(this, "Settings are not available");
         }
