@@ -263,7 +263,7 @@
         <activity
             android:name="com.zyvo.code.adb.AdbPairActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.Material.Dialog.Alert"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:launchMode="singleTop" />
 
     </application>

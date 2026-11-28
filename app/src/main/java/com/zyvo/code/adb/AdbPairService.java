@@ -349,9 +349,20 @@ public class AdbPairService extends Service {
         PairState.markPaired(this);
         update(this, "Paired ✓ — connecting…");
         boolean up = AdbShellController.ensureConnected();
-        update(this, up
-                ? "Connected ✓ — the AI shell can run adb commands"
-                : "Paired ✓ — connect failed: keep Wireless debugging ON and retry the code");
+        if (up) {
+            update(this, "Connected ✓ — the AI shell can run adb commands");
+            // one notification normally (user decision): show the success beat,
+            // then fold away so only the main "Zyvo Code" notification remains
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (isRunning && !pairing) {
+                    stopForeground(true);
+                    stopSelf();
+                }
+            }, 4500);
+        } else {
+            update(this, "Paired ✓ — connect failed: keep Wireless debugging ON"
+                    + " and tap ADB Connect again");
+        }
     }
 
     private static Notification build(Context c, String status) {
@@ -377,6 +388,11 @@ public class AdbPairService extends Service {
                 .extend(ext)
                 .build();
 
+        // fold the whole pairing flow away without pairing
+        Intent stop = new Intent(c, AdbPairService.class).setAction(ACTION_STOP);
+        PendingIntent stopPi = PendingIntent.getService(c, 1105, stop,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
         return new NotificationCompat.Builder(c, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
                 .setContentTitle("Zyvo ADB Connect")
@@ -385,6 +401,8 @@ public class AdbPairService extends Service {
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .addAction(codeAction)
+                .addAction(new NotificationCompat.Action.Builder(
+                        android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi).build())
                 .build();
     }
 

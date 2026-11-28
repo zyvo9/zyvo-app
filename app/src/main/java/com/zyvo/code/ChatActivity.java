@@ -58,10 +58,9 @@ public final class ChatActivity extends AppCompatActivity {
 
         com.zyvo.code.adb.WdbContext.init(getApplicationContext());
         com.zyvo.code.adb.AdbBridgeServer.start(this);
-        // Shizuku-style: the ADB Connect notification (inline pairing-code field,
-        // live port detection) is available for the whole app session, not only
-        // while the AdbPairActivity screen is open.
-        com.zyvo.code.adb.AdbPairService.start(this);
+        // ADB pairing notification is ON-DEMAND only (user decision: one
+        // notification normally). It appears when the user taps ADB Connect
+        // (AdbPairActivity) and removes itself a few seconds after Connected.
 
         // notifications (pairing + engine) need the runtime grant on API 33+
         if (android.os.Build.VERSION.SDK_INT >= 33) {
