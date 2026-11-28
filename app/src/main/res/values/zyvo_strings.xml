@@ -103,6 +103,8 @@
     <string name="attach_files">Attach files</string>
     <string name="attach_too_big">File is too big (max 6 MB each)</string>
     <string name="attach_remove">Remove attachment</string>
+    <string name="a11y_service_label">Zyvo Phone Control</string>
+    <string name="a11y_service_description">Lets the zyvo AI see the screen and tap, type and scroll in other apps when you ask it to.</string>
 </resources>
 
 

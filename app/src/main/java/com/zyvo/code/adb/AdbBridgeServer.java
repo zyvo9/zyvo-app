@@ -54,9 +54,16 @@ public final class AdbBridgeServer {
             if (tok == null || !tok.equals(token)) return;
             String cmd = in.readLine();
             if (cmd == null || cmd.trim().isEmpty()) return;
-            AdbShellController.Result r = AdbShellController.exec(cmd);
             OutputStream os = s.getOutputStream();
-            String body = (r.ok ? "" : "[rejected] ") + (r.output == null ? "" : r.output);
+            String body;
+            if (cmd.startsWith("a11y ")) {
+                // phone-control commands -> the accessibility service
+                body = com.zyvo.code.control.ZyvoAccessibilityService
+                        .runCommand(cmd.substring(5).trim());
+            } else {
+                AdbShellController.Result r = AdbShellController.exec(cmd);
+                body = (r.ok ? "" : "[rejected] ") + (r.output == null ? "" : r.output);
+            }
             os.write((body + "\n").getBytes(StandardCharsets.UTF_8));
             os.flush();
         } catch (Throwable ignored) {}

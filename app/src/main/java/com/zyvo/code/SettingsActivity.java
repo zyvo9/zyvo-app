@@ -36,6 +36,7 @@ public final class SettingsActivity extends Activity {
     private TextView modelValue;
     private TextView keyValue;
     private TextView promptValue;
+    private TextView a11yState;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +80,17 @@ public final class SettingsActivity extends Activity {
         promptValue = value(promptCard, "");
         action(promptCard, "Edit prompt", v -> showPromptDialog());
 
+        LinearLayout a11yCard = card(root, "Phone control");
+        a11yState = value(a11yCard, "");
+        action(a11yCard, "Enable / manage in Settings", v -> {
+            try {
+                startActivity(new android.content.Intent(
+                        android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            } catch (Throwable t) {
+                UiUtil.toast(this, "Open Settings > Accessibility > Zyvo Phone Control");
+            }
+        });
+
         LinearLayout aboutCard = card(root, "About");
         value(aboutCard, "Zyvo Code · Termux fork with a bundled AI agent");
         value(aboutCard, "Build: apk-" + BuildConfig.ZYVO_BUILD
@@ -112,6 +124,20 @@ public final class SettingsActivity extends Activity {
         promptValue.setText(TextUtils.isEmpty(p)
                 ? "None — the built-in app rules only"
                 : "Custom prompt · " + p.length() + " chars");
+        a11yState.setText(a11yEnabled()
+                ? "Enabled — the AI can see the screen and control apps"
+                : "Off — enable 'Zyvo Phone Control' so the AI can control apps");
+    }
+
+    /** True when the phone-control accessibility service is turned on. */
+    private boolean a11yEnabled() {
+        try {
+            String s = android.provider.Settings.Secure.getString(getContentResolver(),
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            return s != null && s.contains("com.zyvo.code.control.ZyvoAccessibilityService");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     // ------------------------------------------------------------- dialogs

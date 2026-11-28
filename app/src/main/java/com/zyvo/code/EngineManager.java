@@ -303,6 +303,32 @@ public final class EngineManager {
         }
     }
 
+    /** Installs the zyvo-a11y script into the Termux prefix: the AI runs
+     *  `zyvo-a11y <command>` to read the screen and tap/type/scroll in other
+     *  apps through the same loopback bridge as zyvo-adb (token-checked). */
+    public void writeA11yBridge() {
+        try {
+            File prefix = new File(rootDir, "usr");
+            File bin = new File(prefix, "bin");
+            if (!bin.exists() && !bin.mkdirs()) return;
+            StringBuilder sb = new StringBuilder();
+            sb.append("#!/data/data/com.termux/files/usr/bin/sh\n");
+            sb.append("# zyvo-a11y - control the phone UI via the app's accessibility service\n");
+            sb.append("TOK=$(cat \"$HOME/.zyvo-adb-token\" 2>/dev/null)\n");
+            sb.append("exec 3<>/dev/tcp/127.0.0.1/4777 || exit 1\n");
+            sb.append("printf '%s\\n' \"$TOK\"\n");
+            sb.append("printf 'a11y %s\\n' \"$*\"\n");
+            sb.append("cat <&3\n");
+            File out = new File(bin, "zyvo-a11y");
+            try (OutputStream os = new FileOutputStream(out)) {
+                os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            out.setExecutable(true, false);
+        } catch (Throwable t) {
+            Log.w(TAG, "a11y bridge script failed: " + t.getMessage());
+        }
+    }
+
     /** Installs the AI-shell env wrapper: the engine's shell-env resolution
      *  drops Termux vars (PREFIX observed EMPTY inside AI bash -> pkg mirror
      *  probing failed and every $PREFIX path broke). This wrapper restores
@@ -528,6 +554,7 @@ public final class EngineManager {
         ensureDirs();
         writeTermuxBrand();
         writeAdbBridge();
+        writeA11yBridge();
         writeAIShell();
 
         // A previous instance may still be serving (app restart, service alive).
