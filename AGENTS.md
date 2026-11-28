@@ -843,3 +843,15 @@ ew_chat_bg still backs the
 - ChatActivity.checkUpdate() now reads zyvo9/zyvo-app releases for future builds.
 - zyvo-app needs the ZYVO_OPENCODE_KEY secret re-added by the user (GitHub secrets
   cannot be read/copied via API) - until then its APKs build WITHOUT the lane key.
+## 2026-11-28 - MuMu/emulator x86 support (VERIFIED working)
+- MuMu 12 = Android 15, kernel x86_64 with ARM translation (abilist: x86_64,arm64-v8a).
+- x86_64 engine (Bun) needs AVX2: this PC is i7-2600 (no AVX2) and MuMu's vCPU does not
+  expose it -> instant SIGILL at spawn. x86_64 engine is UNUSABLE on pre-Haswell hosts.
+- FIX: arm64 engine runs under MuMu translation once the tagfix preload is skipped.
+  EngineManager now preloads libtagfix.so only when SUPPORTED_ABIS[0] == arm64-v8a
+  (real phones unchanged). On MuMu: engine goes READY in ~33s (translated), port 4096
+  LISTEN confirmed, chat connected.
+- Rule: on emulators install the ARM64-V8A APK, never the x86_64 one.
+- Real-x86-phones need an AVX2-free baseline engine build (upstream ZYVO-AI) - not done.
+- adb to MuMu: connect 127.0.0.1:16384 (also 7555/5555); restarting MuMu resets the VM -
+  reinstall + relaunch, the app may vanish from a fresh instance.
