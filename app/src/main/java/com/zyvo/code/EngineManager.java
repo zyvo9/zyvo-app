@@ -656,8 +656,15 @@ public final class EngineManager {
         env.put("LC_ALL", "en_US.UTF-8");
 
         env.put("LD_LIBRARY_PATH", lib);
+        // libtagfix is ARM64-only: on translated environments (MuMu/emulators,
+        // where an arm64 app runs under houdini on an x86_64 kernel) preloading
+        // it kills the whole exec with "CANNOT LINK EXECUTABLE ... EM_AARCH64
+        // instead of EM_X86_64" - so preload only on REAL arm64 devices.
         File tagfix = new File(lib, "libtagfix.so");
-        if (tagfix.exists()) env.put("LD_PRELOAD", tagfix.getAbsolutePath());
+        if (tagfix.exists() && Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0
+                && "arm64-v8a".equals(Build.SUPPORTED_ABIS[0])) {
+            env.put("LD_PRELOAD", tagfix.getAbsolutePath());
+        }
         File opentui = new File(lib, "libopentui.so");
         if (opentui.exists()) env.put("OPENTUI_LIB_PATH", opentui.getAbsolutePath());
         File pty = new File(lib, "librust_pty_arm64.so");
