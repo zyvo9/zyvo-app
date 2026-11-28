@@ -13,22 +13,31 @@ import android.content.Intent;
 import android.os.Build;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.RemoteInput;
 
 /**
  * The one and only notification of the app.
  *
  * The terminal service and the engine service both run as foreground services.
  * They share this notification id and channel, so the shade shows a single
- * "Zyvo Code" entry (with Awake / Exit actions) instead of a separate
- * "Termux" one for the terminal service.
+ * "Zyvo Code" entry. During ADB pairing the SAME notification converts: its
+ * text becomes the live pairing status and it grows the inline pairing-code
+ * field (+ Stop); once paired it converts back to the engine status
+ * automatically (user decision: never two notifications).
  */
 public final class ZyvoNotif {
 
     public static final String CHANNEL_ID = "zyvo_engine";
     public static final int ID = 4101;
 
+    public static final String ACTION_ADB_CODE = "com.zyvo.code.ADB_CODE";
+    public static final String KEY_CODE = "adb_code";
+    public static final String ACTION_ADB_STOP = "com.zyvo.code.ADB_STOP";
+
     private static volatile String text = "Terminal running";
     private static volatile boolean wakeHeld = false;
+    /** Non-null while the ADB pairing flow owns this notification. */
+    private static volatile String adbStatus = null;
 
     private ZyvoNotif() {
     }
@@ -57,6 +66,21 @@ public final class ZyvoNotif {
     public static void setWakeHeld(Context ctx, boolean held) {
         wakeHeld = held;
         refresh(ctx);
+    }
+
+    /**
+     * ADB pairing mode: while {@code s} is non-null the ONE notification shows
+     * the live pairing status with the inline code field; null converts it
+     * back to the engine status (called from EngineService).
+     */
+    public static void setAdbStatus(Context ctx, String s) {
+        adbStatus = (s == null || s.trim().isEmpty()) ? null : s;
+        refresh(ctx);
+    }
+
+    /** Current pairing status, null when the notification is in engine mode. */
+    public static String adbStatusOrNull() {
+        return adbStatus;
     }
 
     /** "Task done" push: fired when a turn finishes with the screen off or the
@@ -89,6 +113,37 @@ public final class ZyvoNotif {
         open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(ctx, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        // ADB pairing mode: same notification, pairing content + inline code field
+        String adb = adbStatus;
+        if (adb != null) {
+            RemoteInput remote = new RemoteInput.Builder(KEY_CODE)
+                    .setLabel("6-digit pairing code")
+                    .build();
+            Intent code = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_CODE);
+            PendingIntent codePi = PendingIntent.getService(ctx, 1104, code,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+            NotificationCompat.Action codeAction = new NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_edit, "Enter code", codePi)
+                    .addRemoteInput(remote)
+                    .setAllowGeneratedReplies(false)
+                    .extend(new NotificationCompat.Action.WearableExtender())
+                    .build();
+            Intent stop = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_STOP);
+            PendingIntent stopPi = PendingIntent.getService(ctx, 1105, stop,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            return new NotificationCompat.Builder(ctx, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_terminal)
+                    .setContentTitle("Zyvo Code")
+                    .setContentText(adb)
+                    .setContentIntent(contentIntent)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .addAction(codeAction)
+                    .addAction(new NotificationCompat.Action.Builder(
+                            android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi).build())
+                    .build();
+        }
 
         Intent wake = new Intent(ctx, TermuxService.class);
         wake.setAction(wakeHeld

@@ -7,7 +7,6 @@ import android.app.NotificationManager;
 import android.os.Build;
 
 import com.termux.app.TermuxService;
-import com.zyvo.code.adb.AdbPairService;
 
 /**
  * Notification "Exit": stops every service, cancels the notifications and
@@ -18,7 +17,6 @@ public class ExitReceiver extends BroadcastReceiver {
     public void onReceive(Context ctx, Intent intent) {
         try { ctx.stopService(new Intent(ctx, EngineService.class)); } catch (Throwable ignored) {}
         try { ctx.stopService(new Intent(ctx, TermuxService.class)); } catch (Throwable ignored) {}
-        try { ctx.stopService(new Intent(ctx, AdbPairService.class)); } catch (Throwable ignored) {}
         try {
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) nm.cancelAll();

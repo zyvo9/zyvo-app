@@ -154,7 +154,7 @@ public class AdbShellController {
         if (!keyFile.exists() || !certFile.exists()) return null;
         PrivateKey key = AdbClient.loadKey(readText(keyFile));
         String certPem = readText(certFile);
-        // ONE handshake, Shizuku style: the port was seeded by AdbPairService's
+        // ONE handshake, Shizuku style: the port was seeded by EngineService's
         // continuous connect discovery BEFORE pairing finished. Try it once;
         // on failure one quick on-demand mDNS query; then a clean fail - the
         // user retries and the next attempt reads whatever discovery refreshed.
@@ -272,7 +272,7 @@ public class AdbShellController {
         } catch (Throwable ignored) {}
     }
 
-    /** Called by AdbPairService's continuous mDNS connect discovery: the port
+    /** Called by EngineService's continuous mDNS connect discovery: the port
      *  lands in the cache BEFORE pairing finishes, so getClient()'s fast path
      *  is a single handshake instead of a 30s sequential scan. */
     public static void noteConnectPort(Context ctx, int port) {

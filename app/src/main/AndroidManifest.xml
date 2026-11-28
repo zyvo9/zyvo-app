@@ -251,15 +251,6 @@
             android:name="com.zyvo.code.ExitReceiver"
             android:exported="false" />
 
-        <service
-            android:name="com.zyvo.code.adb.AdbPairService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="wireless-debugging-pairing" />
-        </service>
-
         <activity
             android:name="com.zyvo.code.adb.AdbPairActivity"
             android:exported="false"
