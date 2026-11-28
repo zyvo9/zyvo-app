@@ -38,6 +38,9 @@ public final class ZyvoNotif {
     private static volatile boolean wakeHeld = false;
     /** Non-null while the ADB pairing flow owns this notification. */
     private static volatile String adbStatus = null;
+    /** True only once a pairing port was actually detected - the inline code
+     *  field appears at THAT moment, not while still searching. */
+    private static volatile boolean adbHasPort = false;
 
     private ZyvoNotif() {
     }
@@ -70,11 +73,12 @@ public final class ZyvoNotif {
 
     /**
      * ADB pairing mode: while {@code s} is non-null the ONE notification shows
-     * the live pairing status with the inline code field; null converts it
-     * back to the engine status (called from EngineService).
+     * the live pairing status; the inline code field appears only once a port
+     * was detected ({@code hasPort}); null converts back to the engine status.
      */
-    public static void setAdbStatus(Context ctx, String s) {
+    public static void setAdbStatus(Context ctx, String s, boolean hasPort) {
         adbStatus = (s == null || s.trim().isEmpty()) ? null : s;
+        adbHasPort = hasPort;
         refresh(ctx);
     }
 
@@ -114,35 +118,37 @@ public final class ZyvoNotif {
         PendingIntent contentIntent = PendingIntent.getActivity(ctx, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        // ADB pairing mode: same notification, pairing content + inline code field
+        // ADB pairing mode: same notification, pairing content; the inline code
+        // field joins only after a pairing port was detected
         String adb = adbStatus;
         if (adb != null) {
-            RemoteInput remote = new RemoteInput.Builder(KEY_CODE)
-                    .setLabel("6-digit pairing code")
-                    .build();
-            Intent code = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_CODE);
-            PendingIntent codePi = PendingIntent.getService(ctx, 1104, code,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-            NotificationCompat.Action codeAction = new NotificationCompat.Action.Builder(
-                    android.R.drawable.ic_menu_edit, "Enter code", codePi)
-                    .addRemoteInput(remote)
-                    .setAllowGeneratedReplies(false)
-                    .extend(new NotificationCompat.Action.WearableExtender())
-                    .build();
-            Intent stop = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_STOP);
-            PendingIntent stopPi = PendingIntent.getService(ctx, 1105, stop,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            return new NotificationCompat.Builder(ctx, CHANNEL_ID)
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_terminal)
                     .setContentTitle("Zyvo Code")
                     .setContentText(adb)
                     .setContentIntent(contentIntent)
                     .setOngoing(true)
-                    .setOnlyAlertOnce(true)
-                    .addAction(codeAction)
-                    .addAction(new NotificationCompat.Action.Builder(
-                            android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi).build())
-                    .build();
+                    .setOnlyAlertOnce(true);
+            if (adbHasPort) {
+                RemoteInput remote = new RemoteInput.Builder(KEY_CODE)
+                        .setLabel("6-digit pairing code")
+                        .build();
+                Intent code = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_CODE);
+                PendingIntent codePi = PendingIntent.getService(ctx, 1104, code,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                b.addAction(new NotificationCompat.Action.Builder(
+                        android.R.drawable.ic_menu_edit, "Enter code", codePi)
+                        .addRemoteInput(remote)
+                        .setAllowGeneratedReplies(false)
+                        .extend(new NotificationCompat.Action.WearableExtender())
+                        .build());
+            }
+            Intent stop = new Intent(ctx, EngineService.class).setAction(ACTION_ADB_STOP);
+            PendingIntent stopPi = PendingIntent.getService(ctx, 1105, stop,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            b.addAction(new NotificationCompat.Action.Builder(
+                    android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPi).build());
+            return b.build();
         }
 
         Intent wake = new Intent(ctx, TermuxService.class);

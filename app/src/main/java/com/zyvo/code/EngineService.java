@@ -123,10 +123,13 @@ public final class EngineService extends Service implements EngineManager.Listen
      *  converts to pairing mode with the inline code field. */
     private void startAdbPairing() {
         if (pairing) return;
-        ZyvoNotif.setAdbStatus(this, livePairPort > 0
-                && System.currentTimeMillis() - livePairPortAt < 90_000
+        boolean detected = livePairPort > 0
+                && System.currentTimeMillis() - livePairPortAt < 90_000;
+        // the inline code field appears only when a port was actually detected
+        ZyvoNotif.setAdbStatus(this, detected
                 ? "Pairing screen detected — port " + livePairPort + " — just type the code"
-                : "Searching… open Wireless debugging > 'Pair device with pairing code'");
+                : "Searching… open Wireless debugging > 'Pair device with pairing code'",
+                detected);
         startDiscovery();
     }
 
@@ -134,7 +137,7 @@ public final class EngineService extends Service implements EngineManager.Listen
         stopDiscovery();
         livePairPort = -1;
         // null converts the notification back to the engine status
-        ZyvoNotif.setAdbStatus(this, null);
+        ZyvoNotif.setAdbStatus(this, null, false);
     }
 
     private void startDiscovery() {
@@ -203,8 +206,10 @@ public final class EngineService extends Service implements EngineManager.Listen
             livePairPort = p;
             livePairPortAt = System.currentTimeMillis();
             if (!pairing) {
+                // detection moment: NOW the notification grows the code field
                 ZyvoNotif.setAdbStatus(EngineService.this,
-                        "Pairing screen detected — port " + p + " — just type the code");
+                        "Pairing screen detected — port " + p + " — just type the code",
+                        true);
             }
         }
     };
@@ -258,30 +263,32 @@ public final class EngineService extends Service implements EngineManager.Listen
                 int port = livePairPort;
                 if (port <= 0) {
                     ZyvoNotif.setAdbStatus(this, "No pairing port detected — reopen"
-                            + " 'Pair device with pairing code' and try again");
+                            + " 'Pair device with pairing code' and try again", false);
                     return;
                 }
-                ZyvoNotif.setAdbStatus(this, "Pairing… port " + port);
+                ZyvoNotif.setAdbStatus(this, "Pairing… port " + port, true);
                 String host = AdbShellController.pairHostFor(port);
                 if (host == null) host = "127.0.0.1";
                 AdbPairClient.Result r = AdbPairClient.pair(host, port, c);
                 if (r != null && r.ok) {
                     PairState.markPaired(this);
-                    ZyvoNotif.setAdbStatus(this, "Paired ✓ — connecting…");
+                    ZyvoNotif.setAdbStatus(this, "Paired ✓ — connecting…", true);
                     boolean up = AdbShellController.ensureConnected();
                     stopDiscovery();
                     // paired = auto-convert back to the default notification
-                    ZyvoNotif.setAdbStatus(this, null);
+                    ZyvoNotif.setAdbStatus(this, null, false);
                     UiUtil.toast(this, up
                             ? "ADB connected ✓ — the AI shell can control the phone"
                             : "Paired ✓ — keep Wireless debugging ON, tap ADB Connect again");
                 } else {
+                    // the old port is dead - the code field hides until the
+                    // reloaded pairing screen advertises a fresh one
                     ZyvoNotif.setAdbStatus(this, "Pair failed — reload the pairing"
-                            + " screen (new code) and try again");
+                            + " screen (new code) and try again", false);
                 }
             } catch (Throwable t) {
                 ZyvoNotif.setAdbStatus(this, "Pair failed: "
-                        + (t.getMessage() != null ? t.getMessage() : t.toString()));
+                        + (t.getMessage() != null ? t.getMessage() : t.toString()), false);
             } finally {
                 pairing = false;
             }
